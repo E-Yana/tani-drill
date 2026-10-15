@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>たんいドリル</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#2e7d4f" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="たんいドリル" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+</head>
+<body>
+<div id="app">
+
+  <!-- ============ ホーム画面 ============ -->
+  <section id="screen-home" class="screen">
+    <p id="home-notice" class="notice hidden">きろくが よめませんでした。あたらしく はじめます</p>
+    <header class="app-header">
+      <h1>たんいドリル</h1>
+      <p class="muted small">長さ・重さ・かさ・時間・面積を れんしゅう</p>
+    </header>
+
+    <div class="panel">
+      <button id="btn-start" class="big-btn primary">きょうの 10もん</button>
+      <p id="home-today" class="muted small"></p>
+    </div>
+
+    <div class="panel">
+      <h2>すすみぐあい</h2>
+      <p id="home-progress" class="progress-total"></p>
+      <div id="home-stages"></div>
+    </div>
+
+    <button id="btn-copy" class="big-btn">きろくを コピー</button>
+    <p id="copy-status" class="muted small hidden"></p>
+    <textarea id="copy-fallback" class="copy-fallback hidden" readonly rows="8"></textarea>
+
+    <p id="app-version" class="muted small version-label"></p>
+  </section>
+
+  <!-- ============ 出題画面 ============ -->
+  <section id="screen-quiz" class="screen hidden">
+    <div class="quiz-top">
+      <div id="quiz-progress" class="progress-badge">1 / 10</div>
+      <span id="quiz-retry" class="retry-badge hidden">もういちど</span>
+      <button id="btn-quit" class="quit-btn">やめる</button>
+    </div>
+    <p id="quiz-stage" class="stage-label"></p>
+    <p id="quiz-prompt" class="prompt"></p>
+
+    <div id="quiz-choices" class="choices hidden"></div>
+
+    <div id="quiz-number" class="number-area hidden">
+      <div class="number-row">
+        <div id="number-display" class="number-display" aria-live="polite"></div>
+        <span id="number-suffix" class="number-suffix"></span>
+      </div>
+      <div class="keypad">
+        <button class="key" data-key="7">7</button>
+        <button class="key" data-key="8">8</button>
+        <button class="key" data-key="9">9</button>
+        <button class="key" data-key="4">4</button>
+        <button class="key" data-key="5">5</button>
+        <button class="key" data-key="6">6</button>
+        <button class="key" data-key="1">1</button>
+        <button class="key" data-key="2">2</button>
+        <button class="key" data-key="3">3</button>
+        <button class="key" data-key="0">0</button>
+        <button class="key" data-key=".">.</button>
+        <button class="key key-del" data-key="del">けす</button>
+      </div>
+      <button id="btn-submit" class="big-btn primary" disabled>こたえる</button>
+    </div>
+
+    <div id="quiz-feedback" class="feedback hidden">
+      <p id="feedback-msg" class="feedback-msg"></p>
+      <p id="feedback-answer" class="feedback-answer"></p>
+      <p id="feedback-explain" class="muted"></p>
+      <button id="btn-next" class="big-btn primary">つぎへ</button>
+    </div>
+  </section>
+
+  <!-- ============ 結果画面 ============ -->
+  <section id="screen-result" class="screen hidden">
+    <header class="app-header">
+      <h1>おつかれさま！</h1>
+    </header>
+    <div class="result-score-box">
+      <div id="result-score" class="result-score">0 / 0</div>
+      <p class="muted small">1かいめで せいかいした かず</p>
+    </div>
+    <div class="panel" id="result-wrongs-panel">
+      <h2>まちがえた もんだい</h2>
+      <div id="result-wrongs"></div>
+    </div>
+    <button id="btn-result-home" class="big-btn primary">ホームへ</button>
+  </section>
+
+</div>
+
+<script src="data.js"></script>
+<script src="logic.js"></script>
+<script src="app.js"></script>
+<script>
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("sw.js").catch(() => {});
+    });
+  }
+</script>
+</body>
+</html>
