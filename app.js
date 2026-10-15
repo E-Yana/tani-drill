@@ -1,0 +1,333 @@
+/**
+ * たんいドリル 画面制御。出題・採点・保存形式は全部 TaniLogic に任せる。
+ * APP_VERSION は sw.js の CACHE 番号と対で上げる。
+ */
+(function () {
+  "use strict";
+
+  const APP_VERSION = "2";
+  const L = window.TaniLogic;
+  const PROBLEMS = window.TANI_PROBLEMS;
+  const STAGE_NAMES = {
+    1: "3年のふくしゅう：長さ",
+    2: "3年のふくしゅう：重さ・かさ・時間",
+    3: "4年：小数と単位",
+    4: "4年：面積（cm²・m²）",
+    5: "4年：大きな面積（a・ha・km²）",
+    6: "4年：単位えらび",
+    7: "4年：まとめの文章題",
+  };
+  const DAILY_DONE_COUNT = 10; // 今日この数以上を出していたら「もう 10もん」
+  const MAX_INPUT_LEN = 8; // 入力できる最大の文字数
+  const COPY_DONE_MS = 2500;
+  const BY_ID = {};
+  PROBLEMS.forEach((p) => {
+    BY_ID[p.id] = p;
+  });
+
+  let state = null;
+  let session = null;
+  let notice = null;
+  let today = L.localDateString();
+  let sessionTotal = 0;
+  let firstWrongIds = []; // この回の1回目で間違えた id
+  let firstCorrectCount = 0;
+  let inputText = "";
+  let currentProblem = null;
+  let answered = false;
+  let sessionOrder = {}; // id -> この回で最初に出た番号
+
+  const $ = (id) => document.getElementById(id);
+
+  // ---- 保存（localStorage はすべて try/catch） ----
+
+  function safeGet(key) {
+    try {
+      return localStorage.getItem(key);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function safeSet(key, value) {
+    try {
+      localStorage.setItem(key, value);
+    } catch (e) {
+      /* 保存できなくても画面は動かす */
+    }
+  }
+
+  /** 既にある key と重ならない退避 key を返す（_2, _3…）。 */
+  function uniqueBackupKey(base) {
+    let key = base;
+    let n = 2;
+    while (safeGet(key) !== null) {
+      key = base + "_" + n;
+      n += 1;
+    }
+    return key;
+  }
+
+  function saveState() {
+    safeSet(L.STORAGE_KEY, L.serializeState(state));
+  }
+
+  function loadState() {
+    today = L.localDateString();
+    const res = L.parseState(safeGet(L.STORAGE_KEY), today);
+    state = res.state;
+    notice = res.notice || null;
+    if (res.backup) safeSet(uniqueBackupKey(res.backup.key), res.backup.value);
+  }
+
+  // ---- 画面切り替え ----
+
+  function showScreen(name) {
+    ["home", "quiz", "result"].forEach((n) => {
+      $("screen-" + n).classList.toggle("hidden", n !== name);
+    });
+    window.scrollTo(0, 0);
+  }
+
+  // ---- ホーム ----
+
+  function isMastered(id) {
+    const it = state.items[id];
+    return !!it && it.mastered === true;
+  }
+
+  function stageCounts() {
+    const stats = {};
+    PROBLEMS.forEach((p) => {
+      const s = stats[p.stage] || (stats[p.stage] = { total: 0, done: 0 });
+      s.total += 1;
+      if (isMastered(p.id)) s.done += 1;
+    });
+    return stats;
+  }
+
+  function renderStages() {
+    const stats = stageCounts();
+    const box = $("home-stages");
+    box.innerHTML = "";
+    Object.keys(stats).forEach((stage) => {
+      const s = stats[stage];
+      const row = document.createElement("div");
+      row.className = "stage-row";
+      const pct = s.total ? Math.round((s.done / s.total) * 100) : 0;
+      row.innerHTML =
+        '<span class="stage-name"></span><span class="stage-bar"><span class="stage-bar-fill"></span></span><span class="stage-count"></span>';
+      row.querySelector(".stage-name").textContent = STAGE_NAMES[stage] || "だんかい " + stage;
+      row.querySelector(".stage-bar-fill").style.width = pct + "%";
+      row.querySelector(".stage-count").textContent = s.done + "/" + s.total;
+      box.appendChild(row);
+    });
+  }
+
+  function renderHome() {
+    today = L.localDateString();
+    const done = PROBLEMS.filter((p) => isMastered(p.id)).length;
+    $("home-progress").textContent = "できる " + done + "問 / " + PROBLEMS.length + "問";
+    $("home-notice").classList.toggle("hidden", notice !== "corrupt");
+    const day = state.days[today];
+    const finishedToday = !!day && day.served.length >= DAILY_DONE_COUNT;
+    $("btn-start").textContent = finishedToday ? "もう 10もん やる" : "きょうの 10もん";
+    $("home-today").textContent = finishedToday
+      ? "きょうは " + day.served.length + "もん やったよ。えらい！"
+      : "";
+    $("app-version").textContent = "v" + APP_VERSION;
+    renderStages();
+    showScreen("home");
+  }
+
+  function setCopyStatus(text) {
+    const el = $("copy-status");
+    el.textContent = text;
+    el.classList.remove("hidden");
+    setTimeout(() => el.classList.add("hidden"), COPY_DONE_MS);
+  }
+
+  function showCopyFallback(text) {
+    const ta = $("copy-fallback");
+    ta.value = text;
+    ta.classList.remove("hidden");
+    ta.focus();
+    ta.select();
+  }
+
+  function copyRecords() {
+    const text = L.formatRecords(state, PROBLEMS, L.localDateString());
+    const fallback = () => showCopyFallback(text);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard
+        .writeText(text)
+        .then(() => setCopyStatus("コピーしました"))
+        .catch(fallback);
+    } else {
+      fallback();
+    }
+  }
+
+  // ---- 出題 ----
+
+  function shuffled(list) {
+    const a = list.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  function startToday() {
+    loadState();
+    const ids = L.buildDailySet(PROBLEMS, state, today);
+    session = L.startSession(ids);
+    sessionTotal = ids.length;
+    firstWrongIds = [];
+    firstCorrectCount = 0;
+    sessionOrder = {};
+    nextQuestion();
+  }
+
+  function renderNumberDisplay() {
+    $("number-display").textContent = inputText;
+    $("btn-submit").disabled = inputText === "" || inputText === ".";
+  }
+
+  function renderChoices(p) {
+    const box = $("quiz-choices");
+    box.innerHTML = "";
+    shuffled(p.choices).forEach((c) => {
+      const b = document.createElement("button");
+      b.className = "big-btn";
+      b.textContent = c;
+      b.addEventListener("click", () => onAnswer(c, b));
+      box.appendChild(b);
+    });
+  }
+
+  function nextQuestion() {
+    if (L.isFinished(session)) {
+      showResult();
+      return;
+    }
+    const id = L.currentId(session);
+    currentProblem = BY_ID[id];
+    answered = false;
+    const p = currentProblem;
+    if (!sessionOrder[id]) sessionOrder[id] = Object.keys(sessionOrder).length + 1;
+    const retry = (session.attempts[id] || 0) >= 1;
+    $("quiz-progress").textContent = sessionOrder[id] + " / " + sessionTotal;
+    $("quiz-retry").classList.toggle("hidden", !retry);
+    $("quiz-stage").textContent = STAGE_NAMES[p.stage] || "";
+    $("quiz-prompt").textContent = p.prompt;
+    $("quiz-feedback").classList.add("hidden");
+    const isChoice = p.type === "choice";
+    $("quiz-choices").classList.toggle("hidden", !isChoice);
+    $("quiz-number").classList.toggle("hidden", isChoice);
+    if (isChoice) {
+      renderChoices(p);
+    } else {
+      inputText = "";
+      $("number-suffix").textContent = p.suffix || "";
+      renderNumberDisplay();
+    }
+    showScreen("quiz");
+  }
+
+  function onKey(key) {
+    if (answered) return;
+    if (key === "del") {
+      inputText = inputText.slice(0, -1);
+    } else if (inputText.length < MAX_INPUT_LEN) {
+      if (key === "." && inputText.indexOf(".") >= 0) return; // 小数点は1つまで
+      inputText += key;
+    }
+    renderNumberDisplay();
+  }
+
+  function markChoices(given) {
+    Array.prototype.forEach.call($("quiz-choices").children, (b) => {
+      b.disabled = true;
+      if (b.textContent === currentProblem.answer) b.classList.add("correct");
+      else if (b.textContent === given) b.classList.add("wrong");
+    });
+  }
+
+  function showFeedback(result) {
+    const p = currentProblem;
+    const msg = $("feedback-msg");
+    msg.textContent = result.correct ? "せいかい！" : "ざんねん";
+    msg.className = "feedback-msg " + (result.correct ? "ok" : "ng");
+    $("feedback-answer").textContent = result.correct
+      ? ""
+      : "こたえ： " + p.answer + (p.suffix || "");
+    $("feedback-explain").textContent = p.explain || "";
+    $("btn-submit").disabled = true;
+    $("quiz-feedback").classList.remove("hidden");
+  }
+
+  /** この回で初めて答えた問題の結果を集計する。 */
+  function tallyFirstAttempt(result) {
+    if (session.attempts[result.id] !== 1) return;
+    if (result.correct) firstCorrectCount += 1;
+    else firstWrongIds.push(result.id);
+  }
+
+  function onAnswer(given, choiceButton) {
+    if (answered) return;
+    answered = true;
+    const result = L.submitAnswer(session, currentProblem, given, state, today);
+    saveState(); // 1問ごとに保存
+    tallyFirstAttempt(result);
+    if (choiceButton) markChoices(given);
+    showFeedback(result);
+  }
+
+  // ---- 結果 ----
+
+  function showResult() {
+    $("result-score").textContent = firstCorrectCount + " / " + sessionTotal;
+    const box = $("result-wrongs");
+    box.innerHTML = "";
+    $("result-wrongs-panel").classList.toggle("hidden", firstWrongIds.length === 0);
+    firstWrongIds.forEach((id) => {
+      const p = BY_ID[id];
+      const item = document.createElement("div");
+      item.className = "wrong-item";
+      item.innerHTML = '<div class="wrong-prompt"></div><div class="wrong-answer"></div>';
+      item.querySelector(".wrong-prompt").textContent = p.prompt;
+      item.querySelector(".wrong-answer").textContent = "こたえ： " + p.answer + (p.suffix || "");
+      box.appendChild(item);
+    });
+    showScreen("result");
+  }
+
+  // ---- 起動 ----
+
+  function bindEvents() {
+    $("btn-start").addEventListener("click", startToday);
+    $("btn-copy").addEventListener("click", copyRecords);
+    $("btn-next").addEventListener("click", nextQuestion);
+    $("btn-quit").addEventListener("click", renderHome);
+    $("btn-result-home").addEventListener("click", () => {
+      notice = null;
+      renderHome();
+    });
+    $("btn-submit").addEventListener("click", () => {
+      if (inputText !== "" && inputText !== ".") onAnswer(inputText, null);
+    });
+    Array.prototype.forEach.call(document.querySelectorAll(".key"), (k) => {
+      k.addEventListener("click", () => onKey(k.dataset.key));
+    });
+  }
+
+  function init() {
+    loadState();
+    bindEvents();
+    renderHome();
+  }
+
+  init();
+})();
