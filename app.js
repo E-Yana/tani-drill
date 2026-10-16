@@ -5,7 +5,7 @@
 (function () {
   "use strict";
 
-  const APP_VERSION = "3";
+  const APP_VERSION = "4";
   const L = window.TaniLogic;
   const PROBLEMS = window.TANI_PROBLEMS;
   const STAGE_NAMES = {
@@ -412,10 +412,29 @@
     });
   }
 
+  /** Service Worker を登録し、更新が入ったらホームにバナーを出す。 */
+  function registerServiceWorker() {
+    if (!("serviceWorker" in navigator) || !location.protocol.startsWith("http")) return;
+    // 起動時に SW が制御中だった場合の controllerchange だけを「更新」とみなす（初回インストールは除く）
+    const hadControllerAtLoad = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (!hadControllerAtLoad) return;
+      const btn = $("home-update-banner");
+      btn.classList.remove("hidden");
+      btn.onclick = () => location.reload();
+    });
+    navigator.serviceWorker
+      .register("sw.js")
+      // 自動チェックは最大24時間に1回のため、起動のたび明示的に確認する
+      .then((reg) => reg.update().catch(() => {}))
+      .catch(() => {});
+  }
+
   function init() {
     loadState();
     bindEvents();
     renderHome();
+    registerServiceWorker();
   }
 
   init();

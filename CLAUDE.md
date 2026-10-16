@@ -14,7 +14,7 @@
 6. コミットして公開する
 
 ## 守ること
-- `app.js` の `APP_VERSION` と `sw.js` の `CACHE`（`tani-drill-vN`）は対で上げる
+- `app.js` の `APP_VERSION` と `sw.js` の `CACHE`（`tani-drill-vN`）は対で上げる。**CACHE を上げないと iPad のホームに出る「新しいバージョンがあります」バナーも出ない**（v4 以降の端末のみ）
 - `data.js` を手で直さない（必ず `gen/make_data.py` から生成）
 - 問題の id を変えない・再利用しない
 - 公開リポジトリなので、子どもの名前・学校名・住所などは書かない
