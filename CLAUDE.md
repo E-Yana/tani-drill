@@ -24,3 +24,4 @@
 - `summary`＝読む用：`masteredCount`/`totalCount`、`stages`（段階別の total・mastered）、`weak`（間違い回数の多い順に最大10件）、`recentDays`（直近14日の出した数・1回目正解数・まちがい id）。`state`＝復元用（`ふくげん`で読み戻す）
 - `taniDrill_lastBackup`（ホームの「ほぞんしよう」促し7日）＝共有シート/ダウンロードを**実行した日**。Driveに保存できた保証ではない
 - 形式を変える時は `format` を上げ、`parseBackup` を直す（`BACKUP_APP_ID`・`STATE_VERSION` の確認あり）
+- 復元前の退避は `taniDrill_v1_restore_<日付>[_n]`（新しい2本だけ残る）。`taniDrill_v1_backup_` は壊れたデータの控えで、刈り込みの対象外
