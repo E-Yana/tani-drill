@@ -146,3 +146,17 @@ h2 { font-size: 22px; margin: 0 0 8px; }
 .restore-box { margin-top: 12px; }
 .restore-box summary { padding: 8px 0; }
 .restore-box input[type="file"] { margin-top: 8px; font-size: 16px; max-width: 100%; }
+
+.update-banner {
+  display: block;
+  width: 100%;
+  min-height: 64px;
+  margin-bottom: 14px;
+  border: none;
+  border-radius: 14px;
+  background: var(--main);
+  color: #fff;
+  font-family: inherit;
+  font-size: 20px;
+  font-weight: bold;
+}

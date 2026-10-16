@@ -17,6 +17,7 @@
 
   <!-- ============ ホーム画面 ============ -->
   <section id="screen-home" class="screen">
+    <button id="home-update-banner" class="update-banner hidden">🔄 新しいバージョンがあります（タップで更新）</button>
     <p id="home-notice" class="notice hidden">きろくが よめませんでした。あたらしく はじめます</p>
     <header class="app-header">
       <h1>たんいドリル</h1>
@@ -116,12 +117,5 @@
 <script src="data.js"></script>
 <script src="logic.js"></script>
 <script src="app.js"></script>
-<script>
-  if ("serviceWorker" in navigator) {
-    window.addEventListener("load", () => {
-      navigator.serviceWorker.register("sw.js").catch(() => {});
-    });
-  }
-</script>
 </body>
 </html>
