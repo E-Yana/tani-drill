@@ -225,6 +225,47 @@ test("reordering_stages_keeps_ids_stable", () => {
   assert.strictEqual(st.items["t-0004"].wrongPending, true);
 });
 
+test("backup_roundtrip_restores_state", () => {
+  const ps = makeProblems(6);
+  const st = L.emptyState();
+  answerOnce(st, ps[0], "x", D1); // 間違い
+  answerOnce(st, ps[1], "1", D1); // 正解
+  const text = JSON.stringify(L.buildBackup(st, ps, D1, "3"));
+  const res = L.parseBackup(text, D1);
+  assert.strictEqual(res.ok, true);
+  assert.deepStrictEqual(res.state, st);
+});
+
+test("backup_summary_lists_weak_by_wrong_count", () => {
+  const ps = makeProblems(6);
+  const st = L.emptyState();
+  answerOnce(st, ps[0], "x", D1);
+  answerOnce(st, ps[2], "x", D1);
+  answerOnce(st, ps[2], "x", D2);
+  const b = L.buildBackup(st, ps, D2, "3");
+  assert.strictEqual(b.summary.weak[0].id, ps[2].id);
+  assert.strictEqual(b.summary.weak[0].wrongCount, 2);
+  assert.strictEqual(b.summary.weak.length, 2);
+  assert.strictEqual(b.summary.totalCount, 6);
+  assert.strictEqual(b.summary.recentDays[0].date, D2);
+});
+
+test("parse_backup_rejects_bad_input_without_throwing", () => {
+  const ps = makeProblems(2);
+  const good = L.buildBackup(L.emptyState(), ps, D1, "3");
+  const withState = (patch) => JSON.stringify(Object.assign({}, good, { state: Object.assign({}, good.state, patch) }));
+  assert.strictEqual(L.parseBackup("{broken", D1).ok, false);
+  assert.strictEqual(L.parseBackup(JSON.stringify({ app: "other", state: good.state }), D1).ok, false);
+  assert.strictEqual(L.parseBackup(withState({ version: 99 }), D1).ok, false);
+  assert.strictEqual(L.parseBackup(withState({ version: undefined }), D1).ok, false);
+  assert.strictEqual(L.parseBackup(withState({ items: { x: "a" } }), D1).ok, false);
+  assert.strictEqual(L.parseBackup(withState({ items: { x: { due: 5 } } }), D1).ok, false);
+});
+
+test("backup_file_name_has_date", () => {
+  assert.strictEqual(L.backupFileName(D1), "tani_drill_backup_2026-10-16.json");
+});
+
 let failed = 0;
 for (const t of tests) {
   try {

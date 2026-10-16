@@ -2,6 +2,7 @@
 
 小学4年生の「単位」練習アプリ（長さ・重さ・かさ・時間・面積）。iPadで使う。公開サイト: https://e-yana.github.io/tani-drill/
 子どもの学習記録はiPadの中（localStorage `taniDrill_v1`）にしか無く、外から書き込めない。
+代わりに、ホームの「きろくを ほぞん」で `tani_drill_backup_YYYY-MM-DD.json` を書き出し、iPadのファイルApp経由でGoogleドライブへ置く（バックアップ兼きろく）。
 全100問・7段階。出題・採点・保存形式は `logic.js`（`window.TaniLogic`）、問題は `data.js`、画面は `app.js`。
 
 ## 問題を足す・直す手順
@@ -18,3 +19,8 @@
 - 問題の id を変えない・再利用しない
 - 公開リポジトリなので、子どもの名前・学校名・住所などは書かない
 - 5年の先取り（体積・L と cm³・速さ・小数×小数・小数÷小数）を入れない
+
+## バックアップJSONの読み方
+- `summary`＝読む用：`masteredCount`/`totalCount`、`stages`（段階別の total・mastered）、`weak`（間違い回数の多い順に最大10件）、`recentDays`（直近14日の出した数・1回目正解数・まちがい id）。`state`＝復元用（`ふくげん`で読み戻す）
+- `taniDrill_lastBackup`（ホームの「ほぞんしよう」促し7日）＝共有シート/ダウンロードを**実行した日**。Driveに保存できた保証ではない
+- 形式を変える時は `format` を上げ、`parseBackup` を直す（`BACKUP_APP_ID`・`STATE_VERSION` の確認あり）

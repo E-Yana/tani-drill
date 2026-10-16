@@ -17,6 +17,9 @@
   var MAX_LEVEL = INTERVALS.length - 1;
   var RECORD_DAYS = 14; // きろくコピーの対象日数
   var NOTICE_CORRUPT = "corrupt";
+  var BACKUP_APP_ID = "tani-drill";
+  var BACKUP_FORMAT = 1;
+  var WEAK_TOP_N = 10; // バックアップ要約に載せる苦手の件数
 
   // ---- 日付（タイムゾーンでずれないよう UTC で計算） ----
 
@@ -337,8 +340,138 @@
       .join("\n");
   }
 
+  // ---- バックアップ兼きろく ----
+
+  /** 今日までの日別記録を新しい順に返す（バックアップ要約用）。 */
+  function recentDays(state, today) {
+    var oldest = addDays(today, -(RECORD_DAYS - 1));
+    return Object.keys(state.days)
+      .filter(function (d) {
+        return d >= oldest && d <= today;
+      })
+      .sort()
+      .reverse()
+      .map(function (d) {
+        var day = state.days[d];
+        return {
+          date: d,
+          served: day.served.length,
+          firstCorrect: day.firstCorrect.length,
+          firstWrong: day.firstWrong.slice(),
+        };
+      });
+  }
+
+  /** 段階別の「できる」数を集計する。 */
+  function stageSummary(state, problems) {
+    var stages = {};
+    problems.forEach(function (p) {
+      var s = stages[p.stage] || (stages[p.stage] = { stage: p.stage, total: 0, mastered: 0 });
+      s.total += 1;
+      var it = state.items[p.id];
+      if (it && it.mastered === true) s.mastered += 1;
+    });
+    return Object.keys(stages)
+      .map(function (k) {
+        return stages[k];
+      })
+      .sort(function (a, b) {
+        return a.stage - b.stage;
+      });
+  }
+
+  /** 間違いの多い順に苦手問題を返す（間違い0で復習待ちでないものは除く）。 */
+  function weakProblems(state, problems) {
+    return problems
+      .map(function (p) {
+        var it = state.items[p.id];
+        return it ? { p: p, it: it } : null;
+      })
+      .filter(function (x) {
+        return x && (x.it.wrongCount > 0 || x.it.wrongPending);
+      })
+      .sort(function (a, b) {
+        return b.it.wrongCount - a.it.wrongCount || (a.p.id < b.p.id ? -1 : 1);
+      })
+      .slice(0, WEAK_TOP_N)
+      .map(function (x) {
+        return {
+          id: x.p.id,
+          prompt: x.p.prompt,
+          unit: x.p.unit,
+          stage: x.p.stage,
+          wrongCount: x.it.wrongCount,
+          wrongPending: !!x.it.wrongPending,
+          streak: x.it.streak,
+          mastered: !!x.it.mastered,
+        };
+      });
+  }
+
+  /** 復元用の state と、読むための summary を1つにまとめる。 */
+  function buildBackup(state, problems, today, appVersion) {
+    var mastered = problems.filter(function (p) {
+      var it = state.items[p.id];
+      return it && it.mastered === true;
+    }).length;
+    return {
+      app: BACKUP_APP_ID,
+      format: BACKUP_FORMAT,
+      exportedAt: today,
+      appVersion: appVersion,
+      summary: {
+        masteredCount: mastered,
+        totalCount: problems.length,
+        stages: stageSummary(state, problems),
+        weak: weakProblems(state, problems),
+        recentDays: recentDays(state, today),
+      },
+      state: state,
+    };
+  }
+
+  /** items の各記録の形を確かめる（parseState は中身を見ない）。 */
+  function itemsLookValid(items) {
+    return Object.keys(items).every(function (id) {
+      var it = items[id];
+      return isPlainObject(it) && (it.due === null || typeof it.due === "string");
+    });
+  }
+
+  /**
+   * バックアップ文字列を検証して state を取り出す。
+   * 戻り値: { ok: true, state } または { ok: false, reason }
+   */
+  function parseBackup(text, today) {
+    var obj;
+    try {
+      obj = JSON.parse(text);
+    } catch (e) {
+      return { ok: false, reason: "json" };
+    }
+    if (!isPlainObject(obj) || obj.app !== BACKUP_APP_ID) {
+      return { ok: false, reason: "app" };
+    }
+    if (!isPlainObject(obj.state) || obj.state.version !== STATE_VERSION) {
+      return { ok: false, reason: "version" };
+    }
+    var res = parseState(JSON.stringify(obj.state), today);
+    if (res.notice || res.backup) return { ok: false, reason: "state" };
+    if (!itemsLookValid(res.state.items)) return { ok: false, reason: "items" };
+    return { ok: true, state: res.state };
+  }
+
+  /** バックアップのファイル名。 */
+  function backupFileName(today) {
+    return "tani_drill_backup_" + today + ".json";
+  }
+
   var api = {
     STORAGE_KEY: STORAGE_KEY,
+    BACKUP_KEY_PREFIX: BACKUP_KEY_PREFIX,
+    buildBackup: buildBackup,
+    parseBackup: parseBackup,
+    backupFileName: backupFileName,
     addDays: addDays,
     localDateString: localDateString,
     emptyState: emptyState,

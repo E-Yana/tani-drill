@@ -5,7 +5,7 @@
 (function () {
   "use strict";
 
-  const APP_VERSION = "2";
+  const APP_VERSION = "3";
   const L = window.TaniLogic;
   const PROBLEMS = window.TANI_PROBLEMS;
   const STAGE_NAMES = {
@@ -20,6 +20,8 @@
   const DAILY_DONE_COUNT = 10; // 今日この数以上を出していたら「もう 10もん」
   const MAX_INPUT_LEN = 8; // 入力できる最大の文字数
   const COPY_DONE_MS = 2500;
+  const BACKUP_REMIND_DAYS = 7; // 最終保存からこの日数たったら促す
+  const LAST_BACKUP_KEY = "taniDrill_lastBackup"; // 共有/ダウンロードを実行した日（Drive保存の保証ではない）
   const BY_ID = {};
   PROBLEMS.forEach((p) => {
     BY_ID[p.id] = p;
@@ -136,6 +138,7 @@
       ? "きょうは " + day.served.length + "もん やったよ。えらい！"
       : "";
     $("app-version").textContent = "v" + APP_VERSION;
+    renderBackupRemind();
     renderStages();
     showScreen("home");
   }
@@ -166,6 +169,86 @@
     } else {
       fallback();
     }
+  }
+
+  // ---- バックアップ兼きろく ----
+
+  function hasAnyRecord() {
+    return Object.keys(state.days).length > 0;
+  }
+
+  function renderBackupRemind() {
+    const last = safeGet(LAST_BACKUP_KEY);
+    const due = !last || L.addDays(last, BACKUP_REMIND_DAYS) <= today;
+    $("backup-remind").classList.toggle("hidden", !(hasAnyRecord() && due));
+  }
+
+  function setStatus(id, text) {
+    const el = $(id);
+    el.textContent = text;
+    el.classList.remove("hidden");
+  }
+
+  function downloadFile(file) {
+    const url = URL.createObjectURL(file);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = file.name;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function markBackedUp() {
+    safeSet(LAST_BACKUP_KEY, L.localDateString());
+    renderBackupRemind();
+  }
+
+  async function saveBackup() {
+    const now = L.localDateString();
+    const backup = L.buildBackup(state, PROBLEMS, now, APP_VERSION);
+    const file = new File([JSON.stringify(backup, null, 2)], L.backupFileName(now), {
+      type: "application/json",
+    });
+    try {
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file] });
+        setStatus("backup-status", "ほぞんの がめんを ひらきました。「ファイルに ほぞん」→「ドライブ」");
+      } else {
+        downloadFile(file);
+        setStatus("backup-status", "ファイルを ダウンロードしました");
+      }
+      markBackedUp();
+    } catch (e) {
+      if (e && e.name === "AbortError") return; // とちゅうで やめた
+      try {
+        downloadFile(file);
+        setStatus("backup-status", "ファイルを ダウンロードしました");
+        markBackedUp();
+      } catch (e2) {
+        setStatus("backup-status", "ほぞんできませんでした");
+      }
+    }
+  }
+
+  function restoreBackup(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const res = L.parseBackup(String(reader.result), L.localDateString());
+      if (!res.ok) {
+        setStatus("restore-status", "このファイルは つかえません。いまの きろくは そのままです");
+        return;
+      }
+      if (!confirm("いまの きろくを ファイルの きろくに おきかえます。いいですか？")) return;
+      const raw = safeGet(L.STORAGE_KEY);
+      if (raw !== null) safeSet(uniqueBackupKey(L.BACKUP_KEY_PREFIX + L.localDateString()), raw);
+      state = res.state;
+      saveState();
+      markBackedUp();
+      setStatus("restore-status", "もとに もどしました");
+      renderHome();
+    };
+    reader.onerror = () => setStatus("restore-status", "ファイルを よめませんでした");
+    reader.readAsText(file);
   }
 
   // ---- 出題 ----
@@ -309,6 +392,12 @@
   function bindEvents() {
     $("btn-start").addEventListener("click", startToday);
     $("btn-copy").addEventListener("click", copyRecords);
+    $("btn-backup").addEventListener("click", saveBackup);
+    $("restore-file").addEventListener("change", (ev) => {
+      const f = ev.target.files && ev.target.files[0];
+      if (f) restoreBackup(f);
+      ev.target.value = "";
+    });
     $("btn-next").addEventListener("click", nextQuestion);
     $("btn-quit").addEventListener("click", renderHome);
     $("btn-result-home").addEventListener("click", () => {
