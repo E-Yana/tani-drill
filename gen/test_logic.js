@@ -266,6 +266,63 @@ test("backup_file_name_has_date", () => {
   assert.strictEqual(L.backupFileName(D1), "tani_drill_backup_2026-10-16.json");
 });
 
+/** localStorage の代わりになる簡易ストレージ。 */
+function fakeStorage(init, opts) {
+  const m = new Map(Object.entries(init || {}));
+  const o = opts || {};
+  return {
+    get length() {
+      return m.size;
+    },
+    key: (i) => Array.from(m.keys())[i] ?? null,
+    getItem: (k) => (m.has(k) ? m.get(k) : null),
+    setItem: (k, v) => {
+      if (o.failSet) throw new Error("quota");
+      m.set(k, o.corruptOnSet ? v + "x" : v);
+    },
+    removeItem: (k) => m.delete(k),
+    keys: () => Array.from(m.keys()),
+  };
+}
+
+test("archive_skips_when_no_current_record", () => {
+  const s = fakeStorage();
+  assert.deepStrictEqual(L.archiveCurrentRecord(s, D1), { ok: true, skipped: true });
+  assert.deepStrictEqual(s.keys(), []);
+});
+
+test("archive_copies_raw_and_aborts_on_failure", () => {
+  const raw = '{"version":1}';
+  const s = fakeStorage({ [L.STORAGE_KEY]: raw });
+  const r1 = L.archiveCurrentRecord(s, D1);
+  const r2 = L.archiveCurrentRecord(s, D1);
+  assert.strictEqual(r1.key, L.RESTORE_KEY_PREFIX + D1);
+  assert.strictEqual(r2.key, L.RESTORE_KEY_PREFIX + D1 + "_2");
+  assert.strictEqual(s.getItem(r1.key), raw);
+  const bad = fakeStorage({ [L.STORAGE_KEY]: raw }, { corruptOnSet: true });
+  assert.strictEqual(L.archiveCurrentRecord(bad, D1).ok, false);
+  assert.deepStrictEqual(bad.keys(), [L.STORAGE_KEY]);
+  const full = fakeStorage({ [L.STORAGE_KEY]: raw }, { failSet: true });
+  assert.strictEqual(L.archiveCurrentRecord(full, D1).ok, false);
+  assert.strictEqual(full.getItem(L.STORAGE_KEY), raw);
+});
+
+test("archive_keeps_only_newest_two", () => {
+  const s = fakeStorage({ [L.STORAGE_KEY]: '{"version":1}' });
+  ["2026-10-14", "2026-10-15", D1, D1].forEach((d) => L.archiveCurrentRecord(s, d));
+  assert.deepStrictEqual(L.listArchiveKeys(s), [L.RESTORE_KEY_PREFIX + D1 + "_2", L.RESTORE_KEY_PREFIX + D1]);
+});
+
+test("archive_does_not_prune_corrupt_data_backups", () => {
+  const corruptKeys = ["2026-10-01", "2026-10-02", "2026-10-03"].map((d) => L.BACKUP_KEY_PREFIX + d);
+  const init = { [L.STORAGE_KEY]: '{"version":1}' };
+  corruptKeys.forEach((k) => (init[k] = "broken"));
+  const s = fakeStorage(init);
+  [D1, D1, D1].forEach((d) => L.archiveCurrentRecord(s, d));
+  corruptKeys.forEach((k) => assert.strictEqual(s.getItem(k), "broken"));
+  assert.strictEqual(L.listArchiveKeys(s).length, 2);
+});
+
 let failed = 0;
 for (const t of tests) {
   try {

@@ -1,6 +1,6 @@
 // service worker: オフラインで使えるよう、アプリ一式をキャッシュする
 // 中身を更新したら CACHE バージョン名を上げること（app.js の APP_VERSION と対）
-const CACHE = "tani-drill-v4";
+const CACHE = "tani-drill-v5";
 const ASSETS = [
   "./",
   "./index.html",

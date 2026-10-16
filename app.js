@@ -5,7 +5,7 @@
 (function () {
   "use strict";
 
-  const APP_VERSION = "4";
+  const APP_VERSION = "5";
   const L = window.TaniLogic;
   const PROBLEMS = window.TANI_PROBLEMS;
   const STAGE_NAMES = {
@@ -21,6 +21,7 @@
   const MAX_INPUT_LEN = 8; // 入力できる最大の文字数
   const COPY_DONE_MS = 2500;
   const BACKUP_REMIND_DAYS = 7; // 最終保存からこの日数たったら促す
+  const MSG_ARCHIVE_FAILED = "いまの きろくを のこせなかったので、やめました。いまの きろくは そのままです";
   const LAST_BACKUP_KEY = "taniDrill_lastBackup"; // 共有/ダウンロードを実行した日（Drive保存の保証ではない）
   const BY_ID = {};
   PROBLEMS.forEach((p) => {
@@ -239,8 +240,12 @@
         return;
       }
       if (!confirm("いまの きろくを ファイルの きろくに おきかえます。いいですか？")) return;
-      const raw = safeGet(L.STORAGE_KEY);
-      if (raw !== null) safeSet(uniqueBackupKey(L.BACKUP_KEY_PREFIX + L.localDateString()), raw);
+      // 現記録があるのに退避できなかった時だけ中止する（記録が空の端末では退避を飛ばして復元できる）
+      const arch = L.archiveCurrentRecord(localStorage, L.localDateString());
+      if (!arch.ok) {
+        setStatus("restore-status", MSG_ARCHIVE_FAILED);
+        return;
+      }
       state = res.state;
       saveState();
       markBackedUp();

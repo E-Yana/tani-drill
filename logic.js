@@ -7,7 +7,8 @@
 
   // ---- 定数 ----
   var STORAGE_KEY = "taniDrill_v1";
-  var BACKUP_KEY_PREFIX = "taniDrill_v1_backup_";
+  var BACKUP_KEY_PREFIX = "taniDrill_v1_backup_"; // 壊れデータの退避専用（刈り込まない）
+  var RESTORE_KEY_PREFIX = "taniDrill_v1_restore_"; // 復元前の退避専用（新しい2本だけ残す）
   var STATE_VERSION = 1;
   var DAILY_COUNT = 10; // 1日に出す問題数
   var REVIEW_MAX = 5; // 復習枠の上限
@@ -20,6 +21,9 @@
   var BACKUP_APP_ID = "tani-drill";
   var BACKUP_FORMAT = 1;
   var WEAK_TOP_N = 10; // バックアップ要約に載せる苦手の件数
+  var BACKUP_KEEP = 2; // 置換前の退避キーを残す本数（新しい順）
+  var ARCHIVE_FIRST_SUFFIX = 2; // 同じ日の2本目の退避キーに付ける番号（_2, _3…）
+  var ARCHIVE_SUFFIX_SEP = "_";
 
   // ---- 日付（タイムゾーンでずれないよう UTC で計算） ----
 
@@ -466,12 +470,86 @@
     return "tani_drill_backup_" + today + ".json";
   }
 
+  /** storage に重ならない退避キー（_2, _3…）を返す。 */
+  function uniqueArchiveKey(storage, base) {
+    var key = base;
+    var n = ARCHIVE_FIRST_SUFFIX;
+    while (storage.getItem(key) !== null) {
+      key = base + ARCHIVE_SUFFIX_SEP + n;
+      n += 1;
+    }
+    return key;
+  }
+
+  /** 退避キーの並べ替え用に「日付」と「同日の連番」へ分ける。 */
+  function archiveOrder(key) {
+    var parts = key.slice(RESTORE_KEY_PREFIX.length).split(ARCHIVE_SUFFIX_SEP);
+    return { date: parts[0], n: parts.length > 1 ? parseInt(parts[1], 10) || 0 : 1 };
+  }
+
+  /** 退避キーを新しい順に並べて返す。 */
+  function listArchiveKeys(storage) {
+    var keys = [];
+    for (var i = 0; i < storage.length; i++) {
+      var k = storage.key(i);
+      if (k !== null && k.indexOf(RESTORE_KEY_PREFIX) === 0) keys.push(k);
+    }
+    return keys.sort(function (a, b) {
+      var oa = archiveOrder(a);
+      var ob = archiveOrder(b);
+      if (oa.date !== ob.date) return oa.date < ob.date ? 1 : -1;
+      return ob.n - oa.n;
+    });
+  }
+
+  /** 古い退避キーを消し、新しい BACKUP_KEEP 本だけ残す（消せなくても復元は進める）。 */
+  function pruneArchives(storage) {
+    listArchiveKeys(storage)
+      .slice(BACKUP_KEEP)
+      .forEach(function (k) {
+        try {
+          storage.removeItem(k);
+        } catch (e) {
+          /* 古い控えを消せなくても復元は進める */
+        }
+      });
+  }
+
+  /**
+   * 置換前に現記録（localStorage の生文字列）を別キーへ退避する。
+   * - 現記録が無ければ退避しない（skipped）
+   * - 書いたあと読み戻して一致を確かめる。例外・不一致は ok:false（呼び出し側は中止する）
+   * 戻り値: { ok: true, skipped: true } / { ok: true, key } / { ok: false }
+   */
+  function archiveCurrentRecord(storage, today) {
+    var key;
+    try {
+      var raw = storage.getItem(STORAGE_KEY);
+      if (raw === null) return { ok: true, skipped: true };
+      key = uniqueArchiveKey(storage, RESTORE_KEY_PREFIX + today);
+      storage.setItem(key, raw);
+      if (storage.getItem(key) !== raw) throw new Error("mismatch");
+    } catch (e) {
+      try {
+        if (key) storage.removeItem(key);
+      } catch (e2) {
+        /* 後始末の失敗は無視（既存記録には触れていない） */
+      }
+      return { ok: false };
+    }
+    pruneArchives(storage);
+    return { ok: true, key: key };
+  }
+
   var api = {
     STORAGE_KEY: STORAGE_KEY,
     BACKUP_KEY_PREFIX: BACKUP_KEY_PREFIX,
+    RESTORE_KEY_PREFIX: RESTORE_KEY_PREFIX,
     buildBackup: buildBackup,
     parseBackup: parseBackup,
     backupFileName: backupFileName,
+    archiveCurrentRecord: archiveCurrentRecord,
+    listArchiveKeys: listArchiveKeys,
     addDays: addDays,
     localDateString: localDateString,
     emptyState: emptyState,
