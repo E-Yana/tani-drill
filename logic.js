@@ -16,7 +16,7 @@
   var REQUEUE_OFFSET = 2; // 入れ直すときにはさむ問題数
   var INTERVALS = [2, 4, 8, 16]; // 習得後の復習間隔（日）
   var MAX_LEVEL = INTERVALS.length - 1;
-  var RECORD_DAYS = 14; // きろくコピーの対象日数
+  var RECORD_DAYS = 14; // バックアップ要約（直近の日別記録）の対象日数
   var NOTICE_CORRUPT = "corrupt";
   var BACKUP_APP_ID = "tani-drill";
   var BACKUP_FORMAT = 1;
@@ -315,35 +315,6 @@
     return { id: id, correct: correct, first: first, requeued: requeued };
   }
 
-  // ---- きろくコピー ----
-
-  /** 直近 RECORD_DAYS 日分を新しい日付順のテキストにする。 */
-  function formatRecords(state, problems, today) {
-    var promptOf = {};
-    problems.forEach(function (p) {
-      promptOf[p.id] = p.prompt;
-    });
-    var oldest = addDays(today, -(RECORD_DAYS - 1));
-    var dates = Object.keys(state.days)
-      .filter(function (d) {
-        return d >= oldest && d <= today;
-      })
-      .sort()
-      .reverse();
-    return dates
-      .map(function (d) {
-        var day = state.days[d];
-        var lines = [
-          d + " / 出した問題数 " + day.served.length + " / 1回目で正解 " + day.firstCorrect.length,
-        ];
-        day.firstWrong.forEach(function (id) {
-          lines.push("  まちがい: " + (promptOf[id] || id));
-        });
-        return lines.join("\n");
-      })
-      .join("\n");
-  }
-
   // ---- バックアップ兼きろく ----
 
   /** 今日までの日別記録を新しい順に返す（バックアップ要約用）。 */
@@ -563,7 +534,6 @@
     isFinished: isFinished,
     submitAnswer: submitAnswer,
     recordFirstResult: recordFirstResult,
-    formatRecords: formatRecords,
   };
 
   if (typeof module !== "undefined" && module.exports) {

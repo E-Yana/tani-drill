@@ -5,7 +5,7 @@
 (function () {
   "use strict";
 
-  const APP_VERSION = "5";
+  const APP_VERSION = "6";
   const L = window.TaniLogic;
   const PROBLEMS = window.TANI_PROBLEMS;
   const STAGE_NAMES = {
@@ -19,7 +19,6 @@
   };
   const DAILY_DONE_COUNT = 10; // 今日この数以上を出していたら「もう 10もん」
   const MAX_INPUT_LEN = 8; // 入力できる最大の文字数
-  const COPY_DONE_MS = 2500;
   const BACKUP_REMIND_DAYS = 7; // 最終保存からこの日数たったら促す
   const MSG_ARCHIVE_FAILED = "いまの きろくを のこせなかったので、やめました。いまの きろくは そのままです";
   const LAST_BACKUP_KEY = "taniDrill_lastBackup"; // 共有/ダウンロードを実行した日（Drive保存の保証ではない）
@@ -142,34 +141,6 @@
     renderBackupRemind();
     renderStages();
     showScreen("home");
-  }
-
-  function setCopyStatus(text) {
-    const el = $("copy-status");
-    el.textContent = text;
-    el.classList.remove("hidden");
-    setTimeout(() => el.classList.add("hidden"), COPY_DONE_MS);
-  }
-
-  function showCopyFallback(text) {
-    const ta = $("copy-fallback");
-    ta.value = text;
-    ta.classList.remove("hidden");
-    ta.focus();
-    ta.select();
-  }
-
-  function copyRecords() {
-    const text = L.formatRecords(state, PROBLEMS, L.localDateString());
-    const fallback = () => showCopyFallback(text);
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard
-        .writeText(text)
-        .then(() => setCopyStatus("コピーしました"))
-        .catch(fallback);
-    } else {
-      fallback();
-    }
   }
 
   // ---- バックアップ兼きろく ----
@@ -396,7 +367,6 @@
 
   function bindEvents() {
     $("btn-start").addEventListener("click", startToday);
-    $("btn-copy").addEventListener("click", copyRecords);
     $("btn-backup").addEventListener("click", saveBackup);
     $("restore-file").addEventListener("change", (ev) => {
       const f = ev.target.files && ev.target.files[0];
