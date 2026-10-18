@@ -45,6 +45,18 @@
         <input id="restore-file" type="file" accept="application/json,.json" />
         <p id="restore-status" class="muted small hidden"></p>
       </details>
+      <details class="restore-box">
+        <summary class="muted small">ドライブの せってい</summary>
+        <label class="small" for="drive-url">URL</label>
+        <input id="drive-url" class="drive-input" type="url" autocomplete="off" autocapitalize="off" spellcheck="false" />
+        <label class="small" for="drive-token">あいことば</label>
+        <input id="drive-token" class="drive-input" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" />
+        <div class="drive-buttons">
+          <button id="drive-save" class="small-btn" type="button">ほぞん</button>
+          <button id="drive-test" class="small-btn" type="button">ためす</button>
+        </div>
+        <p id="drive-status" class="muted small hidden"></p>
+      </details>
     </div>
 
     <p id="app-version" class="muted small version-label"></p>

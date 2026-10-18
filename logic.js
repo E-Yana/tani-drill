@@ -512,7 +512,63 @@
     return { ok: true, key: key };
   }
 
+  // ---- ドライブ自動保存（Apps Script 受け口）の純関数 ----
+
+  var DRIVE_CONTENT_TYPE = "text/plain;charset=utf-8"; // application/json だとプリフライトで失敗するため使わない
+  var DRIVE_KINDS = ["backup", "test"];
+  var DRIVE_URL_HOST = "script.google.com"; // 受け口として認める https のホスト
+
+  /**
+   * 受け口へ送る fetch 用の引数を組み立てる。独自ヘッダーは付けない。
+   * settings: {url, token} / backup: buildBackup の結果 / kind: "backup" | "test"
+   */
+  function buildDriveRequest(settings, backup, kind) {
+    if (DRIVE_KINDS.indexOf(kind) < 0) throw new Error("kind が不正です");
+    return {
+      url: settings.url,
+      options: {
+        method: "POST",
+        headers: { "Content-Type": DRIVE_CONTENT_TYPE },
+        body: JSON.stringify({
+          token: settings.token,
+          app: backup.app,
+          kind: kind,
+          content: JSON.stringify(backup),
+        }),
+      },
+    };
+  }
+
+  /** 受け口の応答本文を読む。{ok:true} のときだけ成功。壊れた JSON・ok:false・空は失敗。 */
+  function parseDriveResponse(text) {
+    try {
+      var v = JSON.parse(text);
+      return { ok: isPlainObject(v) && v.ok === true };
+    } catch (e) {
+      return { ok: false };
+    }
+  }
+
+  /** localStorage の文字列から {url, token} を検証する。無効なら null。 */
+  function parseDriveSettings(raw) {
+    try {
+      var v = JSON.parse(raw);
+      if (!isPlainObject(v) || typeof v.url !== "string" || typeof v.token !== "string") return null;
+      var url = v.url.trim();
+      var token = v.token.trim();
+      if (token === "") return null;
+      var u = new URL(url);
+      if (u.protocol !== "https:" || u.hostname !== DRIVE_URL_HOST) return null;
+      return { url: url, token: token };
+    } catch (e) {
+      return null;
+    }
+  }
+
   var api = {
+    buildDriveRequest: buildDriveRequest,
+    parseDriveResponse: parseDriveResponse,
+    parseDriveSettings: parseDriveSettings,
     STORAGE_KEY: STORAGE_KEY,
     BACKUP_KEY_PREFIX: BACKUP_KEY_PREFIX,
     RESTORE_KEY_PREFIX: RESTORE_KEY_PREFIX,
