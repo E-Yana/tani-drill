@@ -65,7 +65,6 @@ h2 { font-size: 22px; margin: 0 0 8px; }
 .stage-bar-fill { height: 100%; background: var(--main); }
 .stage-count { flex: 0 0 64px; text-align: right; color: var(--muted); }
 .version-label { text-align: right; margin: 12px 0 0; font-size: 12px; }
-.copy-fallback { width: 100%; font-size: 16px; user-select: text; -webkit-user-select: text; }
 
 .quiz-top { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
 .progress-badge { font-size: 26px; font-weight: bold; color: var(--main-dark); }
