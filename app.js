@@ -5,7 +5,7 @@
 (function () {
   "use strict";
 
-  const APP_VERSION = "6";
+  const APP_VERSION = "7";
   const L = window.TaniLogic;
   const PROBLEMS = window.TANI_PROBLEMS;
   const STAGE_NAMES = {
@@ -21,7 +21,12 @@
   const MAX_INPUT_LEN = 8; // 入力できる最大の文字数
   const BACKUP_REMIND_DAYS = 7; // 最終保存からこの日数たったら促す
   const MSG_ARCHIVE_FAILED = "いまの きろくを のこせなかったので、やめました。いまの きろくは そのままです";
-  const LAST_BACKUP_KEY = "taniDrill_lastBackup"; // 共有/ダウンロードを実行した日（Drive保存の保証ではない）
+  // 受け口が ok を返した日、または共有/ダウンロードを実行した日。Drive に入った保証は受け口 ok の時のみ
+  const LAST_BACKUP_KEY = "taniDrill_lastBackup";
+  const DRIVE_SYNC_KEY = "taniDrill_driveSync"; // ドライブ受け口の設定 {url, token}（記録 taniDrill_v1 とは別キー）
+  const DRIVE_TIMEOUT_MS = 15000; // 受け口への送信の時間切れ
+  const MSG_DRIVE_OK = "ドライブに ほぞんしました";
+  const MSG_DRIVE_FAILED = "ドライブに ほぞんできませんでした。もう一度 おすと ファイルで ほぞん";
   const BY_ID = {};
   PROBLEMS.forEach((p) => {
     BY_ID[p.id] = p;
@@ -38,6 +43,8 @@
   let currentProblem = null;
   let answered = false;
   let sessionOrder = {}; // id -> この回で最初に出た番号
+  let fileFallbackPending = false; // ドライブ送信に失敗済み＝次のタップで共有/ダウンロードを開く
+  let driveBusy = false; // ドライブ送信中の二重タップ防止
 
   const $ = (id) => document.getElementById(id);
 
@@ -175,12 +182,24 @@
     renderBackupRemind();
   }
 
-  async function saveBackup() {
-    const now = L.localDateString();
-    const backup = L.buildBackup(state, PROBLEMS, now, APP_VERSION);
-    const file = new File([JSON.stringify(backup, null, 2)], L.backupFileName(now), {
-      type: "application/json",
-    });
+  /** 受け口へ送って ok:true を読めた時だけ true を返す（時間切れ・オフライン・非200・壊れた応答は false）。 */
+  async function sendToDrive(settings, backup, kind) {
+    const req = L.buildDriveRequest(settings, backup, kind);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), DRIVE_TIMEOUT_MS);
+    try {
+      const res = await fetch(req.url, Object.assign({ signal: ctrl.signal }, req.options));
+      if (!res.ok) return false;
+      return L.parseDriveResponse(await res.text()).ok;
+    } catch (e) {
+      return false;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /** 従来の経路（共有シート、だめならダウンロード）。挙動は変えない。 */
+  async function saveBackupAsFile(file) {
     try {
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
         await navigator.share({ files: [file] });
@@ -199,6 +218,82 @@
       } catch (e2) {
         setStatus("backup-status", "ほぞんできませんでした");
       }
+    }
+  }
+
+  /** ドライブ設定済みなら送信。失敗時は markBackedUp も共有も呼ばず、次のタップで従来経路へ。 */
+  async function saveBackupToDrive(settings, backup) {
+    driveBusy = true;
+    setStatus("backup-status", "ドライブに ほぞんしています…");
+    try {
+      if (await sendToDrive(settings, backup, "backup")) {
+        fileFallbackPending = false;
+        markBackedUp();
+        setStatus("backup-status", MSG_DRIVE_OK);
+      } else {
+        fileFallbackPending = true;
+        setStatus("backup-status", MSG_DRIVE_FAILED);
+      }
+    } finally {
+      driveBusy = false;
+    }
+  }
+
+  async function saveBackup() {
+    if (driveBusy) return;
+    const now = L.localDateString();
+    const backup = L.buildBackup(state, PROBLEMS, now, APP_VERSION);
+    const file = new File([JSON.stringify(backup, null, 2)], L.backupFileName(now), {
+      type: "application/json",
+    });
+    const settings = L.parseDriveSettings(safeGet(DRIVE_SYNC_KEY));
+    if (!settings || fileFallbackPending) {
+      // 未設定、または直前のドライブ送信が失敗＝今のタップで従来経路を開く
+      fileFallbackPending = false;
+      await saveBackupAsFile(file);
+      return;
+    }
+    await saveBackupToDrive(settings, backup);
+  }
+
+  // ---- ドライブの設定欄 ----
+
+  function loadDriveForm() {
+    const s = L.parseDriveSettings(safeGet(DRIVE_SYNC_KEY));
+    $("drive-url").value = s ? s.url : "";
+    $("drive-token").value = s ? s.token : "";
+  }
+
+  function readDriveForm() {
+    return L.parseDriveSettings(JSON.stringify({ url: $("drive-url").value, token: $("drive-token").value }));
+  }
+
+  function saveDriveSettings() {
+    const s = readDriveForm();
+    if (!s) {
+      setStatus("drive-status", "URLか あいことばが ただしくありません。ほぞんしませんでした");
+      return;
+    }
+    safeSet(DRIVE_SYNC_KEY, JSON.stringify(s));
+    fileFallbackPending = false;
+    setStatus("drive-status", "せっていを ほぞんしました");
+  }
+
+  async function testDrive() {
+    if (driveBusy) return;
+    const s = readDriveForm();
+    if (!s) {
+      setStatus("drive-status", "URLか あいことばが ただしくありません");
+      return;
+    }
+    driveBusy = true;
+    setStatus("drive-status", "ためしています…");
+    try {
+      const backup = L.buildBackup(state, PROBLEMS, L.localDateString(), APP_VERSION);
+      const ok = await sendToDrive(s, backup, "test");
+      setStatus("drive-status", ok ? "ためしに ほぞんできました" : "ためしに ほぞんできませんでした");
+    } finally {
+      driveBusy = false;
     }
   }
 
@@ -368,6 +463,8 @@
   function bindEvents() {
     $("btn-start").addEventListener("click", startToday);
     $("btn-backup").addEventListener("click", saveBackup);
+    $("drive-save").addEventListener("click", saveDriveSettings);
+    $("drive-test").addEventListener("click", testDrive);
     $("restore-file").addEventListener("change", (ev) => {
       const f = ev.target.files && ev.target.files[0];
       if (f) restoreBackup(f);
@@ -408,6 +505,7 @@
   function init() {
     loadState();
     bindEvents();
+    loadDriveForm();
     renderHome();
     registerServiceWorker();
   }

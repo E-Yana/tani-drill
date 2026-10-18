@@ -323,6 +323,70 @@ test("archive_does_not_prune_corrupt_data_backups", () => {
   assert.strictEqual(L.listArchiveKeys(s).length, 2);
 });
 
+// ---- ドライブ自動保存（テスト用URLは example.invalid のみ） ----
+const DUMMY_SETTINGS = { url: "https://example.invalid/exec", token: "dummy-token" };
+const DUMMY_BACKUP = { app: "tani-drill", format: 1, summary: {}, state: { version: 1 } };
+
+test("drive_request_uses_text_plain_and_no_custom_headers", () => {
+  const r = L.buildDriveRequest(DUMMY_SETTINGS, DUMMY_BACKUP, "backup");
+  assert.strictEqual(r.url, DUMMY_SETTINGS.url);
+  assert.strictEqual(r.options.method, "POST");
+  assert.deepStrictEqual(Object.keys(r.options.headers), ["Content-Type"]);
+  assert.strictEqual(r.options.headers["Content-Type"], "text/plain;charset=utf-8");
+});
+
+test("drive_request_body_has_token_app_kind_and_stringified_content", () => {
+  const r = L.buildDriveRequest(DUMMY_SETTINGS, DUMMY_BACKUP, "test");
+  const body = JSON.parse(r.options.body);
+  assert.deepStrictEqual(Object.keys(body).sort(), ["app", "content", "kind", "token"]);
+  assert.strictEqual(body.token, "dummy-token");
+  assert.strictEqual(body.app, "tani-drill");
+  assert.strictEqual(body.kind, "test");
+  assert.deepStrictEqual(JSON.parse(body.content), DUMMY_BACKUP);
+});
+
+test("drive_request_rejects_unknown_kind", () => {
+  assert.throws(() => L.buildDriveRequest(DUMMY_SETTINGS, DUMMY_BACKUP, "other"));
+});
+
+test("drive_response_only_ok_true_is_success", () => {
+  assert.strictEqual(L.parseDriveResponse('{"ok":true}').ok, true);
+  assert.strictEqual(L.parseDriveResponse('{"ok":false}').ok, false);
+  assert.strictEqual(L.parseDriveResponse('{"ok":"true"}').ok, false);
+  assert.strictEqual(L.parseDriveResponse("{}").ok, false);
+});
+
+test("drive_response_broken_or_empty_is_failure", () => {
+  ["", "<html>error</html>", "{broken", "null", "[]", undefined].forEach((t) => {
+    assert.strictEqual(L.parseDriveResponse(t).ok, false);
+  });
+});
+
+test("drive_settings_valid_returns_url_and_token", () => {
+  const raw = JSON.stringify({ url: "https://script.google.com/exec-example", token: "dummy-token" });
+  assert.deepStrictEqual(L.parseDriveSettings(raw), {
+    url: "https://script.google.com/exec-example",
+    token: "dummy-token",
+  });
+});
+
+test("drive_settings_invalid_returns_null", () => {
+  const bad = [
+    null,
+    "",
+    "{broken",
+    "[]",
+    JSON.stringify({ url: "http://script.google.com/exec-example", token: "t" }), // https でない
+    JSON.stringify({ url: "https://example.invalid/exec", token: "t" }), // 受け口のホストでない
+    JSON.stringify({ url: "not a url", token: "t" }),
+    JSON.stringify({ url: "https://script.google.com/exec-example", token: "" }),
+    JSON.stringify({ url: "https://script.google.com/exec-example", token: "   " }),
+    JSON.stringify({ url: "https://script.google.com/exec-example" }),
+    JSON.stringify({ token: "t" }),
+  ];
+  bad.forEach((raw) => assert.strictEqual(L.parseDriveSettings(raw), null));
+});
+
 let failed = 0;
 for (const t of tests) {
   try {
