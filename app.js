@@ -5,7 +5,7 @@
 (function () {
   "use strict";
 
-  const APP_VERSION = "7";
+  const APP_VERSION = "8";
   const L = window.TaniLogic;
   const PROBLEMS = window.TANI_PROBLEMS;
   const STAGE_NAMES = {
@@ -38,6 +38,7 @@
   let today = L.localDateString();
   let sessionTotal = 0;
   let firstWrongIds = []; // この回の1回目で間違えた id
+  let firstWrongGiven = {}; // id -> この回の1回目の答え（結果画面用。state からは引かない）
   let firstCorrectCount = 0;
   let inputText = "";
   let currentProblem = null;
@@ -147,6 +148,7 @@
     $("app-version").textContent = "v" + APP_VERSION;
     renderBackupRemind();
     renderStages();
+    renderMistakeNote();
     showScreen("home");
   }
 
@@ -339,6 +341,7 @@
     session = L.startSession(ids);
     sessionTotal = ids.length;
     firstWrongIds = [];
+    firstWrongGiven = {};
     firstCorrectCount = 0;
     sessionOrder = {};
     nextQuestion();
@@ -423,10 +426,14 @@
   }
 
   /** この回で初めて答えた問題の結果を集計する。 */
-  function tallyFirstAttempt(result) {
+  function tallyFirstAttempt(result, given) {
     if (session.attempts[result.id] !== 1) return;
-    if (result.correct) firstCorrectCount += 1;
-    else firstWrongIds.push(result.id);
+    if (result.correct) {
+      firstCorrectCount += 1;
+    } else {
+      firstWrongIds.push(result.id);
+      firstWrongGiven[result.id] = given;
+    }
   }
 
   function onAnswer(given, choiceButton) {
@@ -434,12 +441,25 @@
     answered = true;
     const result = L.submitAnswer(session, currentProblem, given, state, today);
     saveState(); // 1問ごとに保存
-    tallyFirstAttempt(result);
+    tallyFirstAttempt(result, given);
     if (choiceButton) markChoices(given);
     showFeedback(result);
   }
 
   // ---- 結果 ----
+
+  /** まちがえた問題1件ぶんの表示（問題・きみの こたえ・こたえ）を作る。 */
+  function wrongItem(prompt, given, answer, suffix, note) {
+    const item = document.createElement("div");
+    item.className = "wrong-item";
+    item.innerHTML =
+      '<div class="wrong-prompt"></div><div class="wrong-given"></div><div class="wrong-answer"></div>';
+    item.querySelector(".wrong-prompt").textContent = prompt;
+    item.querySelector(".wrong-given").textContent =
+      "きみの こたえ： " + given + suffix + (note ? "（" + note + "）" : "");
+    item.querySelector(".wrong-answer").textContent = "こたえ： " + answer + suffix;
+    return item;
+  }
 
   function showResult() {
     $("result-score").textContent = firstCorrectCount + " / " + sessionTotal;
@@ -448,14 +468,36 @@
     $("result-wrongs-panel").classList.toggle("hidden", firstWrongIds.length === 0);
     firstWrongIds.forEach((id) => {
       const p = BY_ID[id];
-      const item = document.createElement("div");
-      item.className = "wrong-item";
-      item.innerHTML = '<div class="wrong-prompt"></div><div class="wrong-answer"></div>';
-      item.querySelector(".wrong-prompt").textContent = p.prompt;
-      item.querySelector(".wrong-answer").textContent = "こたえ： " + p.answer + (p.suffix || "");
-      box.appendChild(item);
+      box.appendChild(wrongItem(p.prompt, firstWrongGiven[id], p.answer, p.suffix || "", ""));
     });
     showScreen("result");
+  }
+
+  // ---- まちがいノート（ホーム・直近14日） ----
+
+  /** 日付 YYYY-MM-DD を「10がつ23にち」の形にする。 */
+  function dateLabel(dateStr) {
+    const p = dateStr.split("-").map(Number);
+    return p[1] + "がつ" + p[2] + "にち";
+  }
+
+  function renderMistakeNote() {
+    const box = $("mistake-note");
+    box.innerHTML = "";
+    const list = L.recentMistakes(state, PROBLEMS, today);
+    $("mistake-note-empty").classList.toggle("hidden", list.length > 0);
+    let lastDate = null;
+    list.forEach((m) => {
+      if (m.date !== lastDate) {
+        const h = document.createElement("h3");
+        h.className = "mistake-date";
+        h.textContent = dateLabel(m.date);
+        box.appendChild(h);
+        lastDate = m.date;
+      }
+      const note = m.attempt > 1 ? m.attempt + "かいめ" : "";
+      box.appendChild(wrongItem(m.prompt, m.given, m.answer, m.suffix, note));
+    });
   }
 
   // ---- 起動 ----

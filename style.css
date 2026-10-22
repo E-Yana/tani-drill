@@ -126,7 +126,11 @@ h2 { font-size: 22px; margin: 0 0 8px; }
 .wrong-item { border-top: 1px solid #dde8e1; padding: 10px 0; }
 .wrong-item:first-child { border-top: none; }
 .wrong-prompt { font-size: 20px; white-space: pre-wrap; }
-.wrong-answer { font-size: 20px; font-weight: bold; color: var(--ng); }
+.wrong-given { font-size: 18px; color: var(--ng); }
+.wrong-answer { font-size: 20px; font-weight: bold; color: var(--ok); }
+.mistake-box summary { cursor: pointer; }
+.mistake-box summary h2 { display: inline; }
+.mistake-date { font-size: 18px; margin: 14px 0 4px; }
 
 .quit-btn {
   margin-left: auto;
