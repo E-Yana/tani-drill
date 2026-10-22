@@ -21,7 +21,8 @@
 - 5年の先取り（体積・L と cm³・速さ・小数×小数・小数÷小数）を入れない
 
 ## バックアップJSONの読み方
-- `summary`＝読む用：`masteredCount`/`totalCount`、`stages`（段階別の total・mastered）、`weak`（間違い回数の多い順に最大10件）、`recentDays`（直近14日の出した数・1回目正解数・まちがい id）。`state`＝復元用（`ふくげん`で読み戻す）
+- `summary`＝読む用：`masteredCount`/`totalCount`、`stages`（段階別の total・mastered）、`weak`（間違い回数の多い順に最大10件）、`recentDays`（直近14日の出した数・1回目正解数・まちがい id）、`mistakes`（v8〜。直近14日のまちがえた答え・新しい順。`prompt`・`given`＝子どもの答え・`answer`・`suffix`・`attempt`＝その回の中で何回目か）。`state`＝復元用（`ふくげん`で読み戻す）
+- `state.mistakes`（v8〜・任意項目）＝`{date, id, given, attempt}` の追記のみ。14日より古い件は記録時に捨てる。読むときに形を検査して不正な件は読み飛ばす。出題・習得の判定には使わない。v7以前の記録には無い（`STATE_VERSION`・`format` は据え置き）
 - `taniDrill_lastBackup`（ホームの「ほぞんしよう」促し7日）＝受け口が ok を返した日、または共有/ダウンロードを**実行した日**。Driveに入った保証は受け口 ok の時のみ
 - `taniDrill_driveSync`＝`{url, token}` のJSON。`taniDrill_v1`・`STATE_VERSION` とは別キー。値をコード・ログ・コミットに書かない
 - 受け口の実体は Apps Script「学習アプリ受け口」（3アプリ共用）。Mac の `~/gas/learning-apps-receiver/` から clasp（`npx @google/clasp@3.4.1`）で `push` → `create-deployment -i <既存ID>` で同じURLのまま更新する。秘密（`config.gs`・`.token`・`.url`）はそのフォルダだけに置く

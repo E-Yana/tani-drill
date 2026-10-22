@@ -387,6 +387,114 @@ test("drive_settings_invalid_returns_null", () => {
   bad.forEach((raw) => assert.strictEqual(L.parseDriveSettings(raw), null));
 });
 
+// ---- まちがえた答えの記録 ----
+
+test("mistake_recorded_with_given_and_attempt", () => {
+  const ps = makeProblems(3);
+  const st = L.emptyState();
+  const s = L.startSession(["t-0001"]);
+  L.submitAnswer(s, ps[0], "30", st, D1); // 1回目まちがい
+  L.submitAnswer(s, ps[0], "300", st, D1); // 2回目まちがい
+  assert.deepStrictEqual(st.mistakes, [
+    { date: D1, id: "t-0001", given: "30", attempt: 1 },
+    { date: D1, id: "t-0001", given: "300", attempt: 2 },
+  ]);
+});
+
+test("correct_answer_not_recorded_as_mistake", () => {
+  const ps = makeProblems(1);
+  const st = L.emptyState();
+  answerOnce(st, ps[0], "1", D1);
+  assert.strictEqual(st.mistakes, undefined);
+});
+
+test("mistakes_older_than_window_are_dropped", () => {
+  const ps = makeProblems(1);
+  const st = L.emptyState();
+  answerOnce(st, ps[0], "9", D1);
+  const inWindow = L.addDays(D1, L.RECORD_DAYS - 1); // D1 はまだ窓の中
+  answerOnce(st, ps[0], "8", inWindow);
+  assert.strictEqual(st.mistakes.length, 2);
+  const outWindow = L.addDays(D1, L.RECORD_DAYS); // D1 が窓の外へ
+  answerOnce(st, ps[0], "7", outWindow);
+  assert.deepStrictEqual(
+    st.mistakes.map((m) => m.given),
+    ["8", "7"]
+  );
+});
+
+test("fourteen_days_of_thirty_mistakes_all_kept", () => {
+  const ps = makeProblems(10);
+  const st = L.emptyState();
+  const last = L.addDays(D1, L.RECORD_DAYS - 1);
+  for (let d = 0; d < L.RECORD_DAYS; d++) {
+    const day = L.addDays(D1, d);
+    const s = L.startSession(ps.map((p) => p.id));
+    while (!L.isFinished(s)) {
+      const p = ps.find((x) => x.id === L.currentId(s));
+      L.submitAnswer(s, p, "x", st, day); // 全部まちがい＝1日30件
+    }
+  }
+  assert.strictEqual(st.mistakes.length, L.RECORD_DAYS * 30);
+  assert.strictEqual(L.recentMistakes(st, ps, last).length, L.RECORD_DAYS * 30);
+});
+
+test("old_state_without_mistakes_still_loads_and_backs_up", () => {
+  const ps = makeProblems(2);
+  const old = { version: 1, items: {}, days: {} };
+  const res = L.parseState(JSON.stringify(old), D1);
+  assert.ok(!res.notice);
+  const b = L.buildBackup(res.state, ps, D1, "8");
+  assert.deepStrictEqual(b.summary.mistakes, []);
+  const back = L.parseBackup(JSON.stringify(b), D1);
+  assert.ok(back.ok);
+});
+
+test("broken_mistake_entries_are_skipped_not_thrown", () => {
+  const ps = makeProblems(2);
+  const st = L.emptyState();
+  st.mistakes = [
+    { date: D1, id: "t-0001", given: "5", attempt: 1 },
+    { date: D1, id: "zz-9999", given: "5", attempt: 1 }, // 今の問題に無い id
+    { date: D1, id: "t-0002", given: 5, attempt: 1 }, // 答えが数値
+    null,
+    "broken",
+    { date: D1, id: "t-0002" }, // 答えが無い
+  ];
+  const b = L.buildBackup(st, ps, D1, "8");
+  assert.deepStrictEqual(
+    b.summary.mistakes.map((m) => m.id),
+    ["t-0001"]
+  );
+  st.mistakes = "not an array";
+  assert.deepStrictEqual(L.buildBackup(st, ps, D1, "8").summary.mistakes, []);
+  // 壊れた配列のまま次のまちがいを記録しても落ちない
+  answerOnce(st, ps[0], "4", D1);
+  assert.strictEqual(st.mistakes.length, 1);
+});
+
+test("summary_mistakes_newest_first_with_answer", () => {
+  const ps = [prob("t-0001", 1, "300"), prob("t-0002", 1, "2")];
+  ps[0].suffix = "cm";
+  const st = L.emptyState();
+  answerOnce(st, ps[0], "30", D1);
+  answerOnce(st, ps[1], "20", D2);
+  answerOnce(st, ps[0], "3000", D2);
+  const ms = L.buildBackup(st, ps, D2, "8").summary.mistakes;
+  assert.deepStrictEqual(
+    ms.map((m) => [m.date, m.id, m.given]),
+    [
+      [D2, "t-0001", "3000"],
+      [D2, "t-0002", "20"],
+      [D1, "t-0001", "30"],
+    ]
+  );
+  assert.strictEqual(ms[0].answer, "300");
+  assert.strictEqual(ms[0].suffix, "cm");
+  assert.strictEqual(ms[0].prompt, "問題t-0001");
+  assert.strictEqual(ms[0].attempt, 1);
+});
+
 let failed = 0;
 for (const t of tests) {
   try {

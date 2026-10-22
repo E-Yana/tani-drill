@@ -24,6 +24,8 @@
   var BACKUP_KEEP = 2; // 置換前の退避キーを残す本数（新しい順）
   var ARCHIVE_FIRST_SUFFIX = 2; // 同じ日の2本目の退避キーに付ける番号（_2, _3…）
   var ARCHIVE_SUFFIX_SEP = "_";
+  // まちがえた答えの記録の件数上限（容量の安全網。14日分は必ず入る）
+  var MISTAKE_LOG_MAX = RECORD_DAYS * DAILY_COUNT * MAX_TRIES;
 
   // ---- 日付（タイムゾーンでずれないよう UTC で計算） ----
 
@@ -301,6 +303,29 @@
     session.queue.splice(pos, 0, id);
   }
 
+  /** 記録の1件が「まちがえた答え」の形をしているか（日付・id・答えが文字列）。 */
+  function isMistakeEntry(m) {
+    return (
+      isPlainObject(m) &&
+      typeof m.date === "string" &&
+      typeof m.id === "string" &&
+      typeof m.given === "string"
+    );
+  }
+
+  /**
+   * まちがえた答えを state.mistakes に足す（14日より古い件・形の合わない件は捨てる）。
+   * attempt はその回の中で何回目か（1＝初回）。出題・習得の判定には使わない。
+   */
+  function recordMistake(state, id, given, today, attempt) {
+    var oldest = addDays(today, -(RECORD_DAYS - 1));
+    var list = (Array.isArray(state.mistakes) ? state.mistakes : []).filter(function (m) {
+      return isMistakeEntry(m) && m.date >= oldest;
+    });
+    list.push({ date: today, id: id, given: String(given), attempt: attempt });
+    state.mistakes = list.slice(-MISTAKE_LOG_MAX);
+  }
+
   /**
    * いまの問題に回答する。
    * 戻り値: { id, correct, first（その日の1回目として記録したか）, requeued }
@@ -310,6 +335,7 @@
     var correct = isCorrect(problem, given);
     session.attempts[id] = (session.attempts[id] || 0) + 1;
     var first = recordFirstResult(state, id, correct, today);
+    if (!correct) recordMistake(state, id, given, today, session.attempts[id]);
     var requeued = !correct && session.attempts[id] < MAX_TRIES;
     if (requeued) requeue(session, id);
     return { id: id, correct: correct, first: first, requeued: requeued };
@@ -333,6 +359,45 @@
           served: day.served.length,
           firstCorrect: day.firstCorrect.length,
           firstWrong: day.firstWrong.slice(),
+        };
+      });
+  }
+
+  /**
+   * 直近の「まちがえた答え」を新しい順に返す（バックアップ要約・まちがいノート用）。
+   * 今の問題データに無い id や形の合わない件は読み飛ばす。
+   */
+  function recentMistakes(state, problems, today) {
+    if (!Array.isArray(state.mistakes)) return [];
+    var byId = {};
+    problems.forEach(function (p) {
+      byId[p.id] = p;
+    });
+    var oldest = addDays(today, -(RECORD_DAYS - 1));
+    return state.mistakes
+      .map(function (m, i) {
+        return { m: m, i: i };
+      })
+      .filter(function (x) {
+        var m = x.m;
+        return isMistakeEntry(m) && byId[m.id] && m.date >= oldest && m.date <= today;
+      })
+      .sort(function (a, b) {
+        if (a.m.date !== b.m.date) return a.m.date < b.m.date ? 1 : -1;
+        return b.i - a.i; // 同じ日は後に答えた方を先に
+      })
+      .map(function (x) {
+        var p = byId[x.m.id];
+        return {
+          date: x.m.date,
+          id: p.id,
+          prompt: p.prompt,
+          given: x.m.given,
+          answer: p.answer,
+          suffix: p.suffix || "",
+          unit: p.unit,
+          stage: p.stage,
+          attempt: typeof x.m.attempt === "number" ? x.m.attempt : 1,
         };
       });
   }
@@ -400,6 +465,7 @@
         stages: stageSummary(state, problems),
         weak: weakProblems(state, problems),
         recentDays: recentDays(state, today),
+        mistakes: recentMistakes(state, problems, today),
       },
       state: state,
     };
@@ -590,6 +656,8 @@
     isFinished: isFinished,
     submitAnswer: submitAnswer,
     recordFirstResult: recordFirstResult,
+    recentMistakes: recentMistakes,
+    RECORD_DAYS: RECORD_DAYS,
   };
 
   if (typeof module !== "undefined" && module.exports) {
