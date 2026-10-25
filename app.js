@@ -5,7 +5,7 @@
 (function () {
   "use strict";
 
-  const APP_VERSION = "8";
+  const APP_VERSION = "9";
   const L = window.TaniLogic;
   const PROBLEMS = window.TANI_PROBLEMS;
   const STAGE_NAMES = {
@@ -45,7 +45,8 @@
   let answered = false;
   let sessionOrder = {}; // id -> この回で最初に出た番号
   let fileFallbackPending = false; // ドライブ送信に失敗済み＝次のタップで共有/ダウンロードを開く
-  let driveBusy = false; // ドライブ送信中の二重タップ防止
+  let driveBusy = false; // ドライブ送信中の二重タップ防止（自動送信中も立てる）
+  let autoBackupPromise = null; // 結果画面からの自動送信（送信中だけ値が入る）
 
   const $ = (id) => document.getElementById(id);
 
@@ -241,10 +242,47 @@
     }
   }
 
-  async function saveBackup() {
-    if (driveBusy) return;
+  /** 送る中身の組み立て（手動ボタンと自動送信で共用）。 */
+  function makeBackup() {
     const now = L.localDateString();
-    const backup = L.buildBackup(state, PROBLEMS, now, APP_VERSION);
+    return { now, backup: L.buildBackup(state, PROBLEMS, now, APP_VERSION) };
+  }
+
+  /** 自動送信が送信中なら、その旨を出して終わるのを待つ（黙って無視しない）。 */
+  async function waitAutoBackup(statusId) {
+    if (!autoBackupPromise) return;
+    setStatus(statusId, "ドライブに ほぞんしています…");
+    await autoBackupPromise;
+  }
+
+  /**
+   * テスト終了時の自動送信。未設定・送信中なら何もしない。
+   * 成功時だけ保存日を記録し、失敗時は何も触らない（画面にも出さない）。
+   */
+  function autoBackupToDrive() {
+    if (driveBusy) return;
+    const settings = L.parseDriveSettings(safeGet(DRIVE_SYNC_KEY));
+    if (!settings) return;
+    driveBusy = true;
+    autoBackupPromise = (async () => {
+      try {
+        if (await sendToDrive(settings, makeBackup().backup, "backup")) {
+          fileFallbackPending = false;
+          markBackedUp();
+        }
+      } catch (e) {
+        // 自動送信の失敗は無言（従来の手動ボタンと7日の促しが安全網）
+      } finally {
+        driveBusy = false;
+        autoBackupPromise = null;
+      }
+    })();
+  }
+
+  async function saveBackup() {
+    await waitAutoBackup("backup-status");
+    if (driveBusy) return;
+    const { now, backup } = makeBackup();
     const file = new File([JSON.stringify(backup, null, 2)], L.backupFileName(now), {
       type: "application/json",
     });
@@ -282,6 +320,7 @@
   }
 
   async function testDrive() {
+    await waitAutoBackup("drive-status");
     if (driveBusy) return;
     const s = readDriveForm();
     if (!s) {
@@ -291,7 +330,7 @@
     driveBusy = true;
     setStatus("drive-status", "ためしています…");
     try {
-      const backup = L.buildBackup(state, PROBLEMS, L.localDateString(), APP_VERSION);
+      const backup = makeBackup().backup;
       const ok = await sendToDrive(s, backup, "test");
       setStatus("drive-status", ok ? "ためしに ほぞんできました" : "ためしに ほぞんできませんでした");
     } finally {
@@ -471,6 +510,7 @@
       box.appendChild(wrongItem(p.prompt, firstWrongGiven[id], p.answer, p.suffix || "", ""));
     });
     showScreen("result");
+    autoBackupToDrive(); // 結果画面の表示は待たない
   }
 
   // ---- まちがいノート（ホーム・直近14日） ----
