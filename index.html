@@ -98,17 +98,89 @@
       <p class="guide-line">この せんが 1cm</p>
       <div id="guide-ruler" class="ruler"></div>
       <p class="guide-line">1cm ＝ 10mm</p>
-      <p id="guide-line-m" class="guide-line"></p>
-      <p class="guide-line">1km ＝ 1000m ・ いえから 学校まで くらい</p>
+      <div class="guide-row">
+        <svg width="130" height="84" viewBox="0 0 130 84" role="img" aria-label="1mの ものさしぼうと、おなじ たかさの やじるし">
+          <rect x="12" y="4" width="12" height="76" rx="2" fill="#e3f2e8" stroke="#2e7d4f" stroke-width="2"/>
+          <path d="M24 16h5M24 30h5M24 44h5M24 58h5M24 72h5" stroke="#2e7d4f" stroke-width="2"/>
+          <path d="M44 6v72M44 4l-5 8h10zM44 80l-5-8h10z" stroke="#1f5c39" stroke-width="2" fill="#1f5c39"/>
+          <text x="50" y="46" font-size="18" class="guide-svg-text" fill="#1f5c39">1m</text>
+          <g id="guide-person" class="hidden" fill="#5f6f66">
+            <circle cx="108" cy="15" r="11"/>
+            <rect x="97" y="28" width="22" height="26" rx="6"/>
+            <rect x="99" y="54" width="8" height="26" rx="3"/>
+            <rect x="109" y="54" width="8" height="26" rx="3"/>
+          </g>
+        </svg>
+        <p id="guide-line-m" class="guide-line"></p>
+      </div>
+      <div class="guide-row">
+        <svg width="220" height="70" viewBox="0 0 220 70" role="img" aria-label="いえと 学校を むすぶ みちと、1kmの やじるし">
+          <polygon points="4,24 24,6 44,24" fill="#2e7d4f"/>
+          <rect x="8" y="24" width="32" height="22" fill="#e3f2e8" stroke="#2e7d4f" stroke-width="2"/>
+          <rect x="21" y="32" width="8" height="14" fill="#2e7d4f"/>
+          <rect x="164" y="8" width="20" height="16" fill="#e3f2e8" stroke="#2e7d4f" stroke-width="2"/>
+          <circle cx="174" cy="16" r="5" fill="#fff" stroke="#1f5c39" stroke-width="1.5"/>
+          <path d="M174 16v-3M174 16h3" stroke="#1f5c39" stroke-width="1.5"/>
+          <rect x="152" y="24" width="64" height="22" fill="#e3f2e8" stroke="#2e7d4f" stroke-width="2"/>
+          <rect x="162" y="31" width="8" height="8" fill="#2e7d4f"/>
+          <rect x="182" y="31" width="8" height="8" fill="#2e7d4f"/>
+          <rect x="198" y="31" width="8" height="15" fill="#2e7d4f"/>
+          <path d="M0 48h220" stroke="#5f6f66" stroke-width="3"/>
+          <path d="M24 60h172M24 60l8-5v10zM196 60l-8-5v10z" stroke="#1f5c39" stroke-width="2" fill="#1f5c39"/>
+          <text x="110" y="42" text-anchor="middle" font-size="16" class="guide-svg-text" fill="#1f5c39">1km</text>
+        </svg>
+        <p class="guide-line">1km ＝ 1000m ・ いえから 学校まで くらい</p>
+      </div>
     </div>
     <div class="panel">
       <h2>かさ</h2>
-      <p class="guide-line">1L ＝ 10dL ＝ 1000mL</p>
+      <div class="guide-row">
+        <svg width="270" height="64" viewBox="0 0 270 64" role="img" aria-label="牛乳パック 1本は、1dLのますが 10こ ぶん">
+          <polygon points="2,20 20,2 38,20" fill="#fff" stroke="#2e7d4f" stroke-width="2" stroke-linejoin="round"/>
+          <rect x="2" y="20" width="36" height="42" fill="#fff" stroke="#2e7d4f" stroke-width="2"/>
+          <rect x="2" y="31" width="36" height="18" fill="#e3f2e8"/>
+          <text x="20" y="46" text-anchor="middle" font-size="15" font-weight="bold" class="guide-svg-text" fill="#1f5c39">1L</text>
+          <text x="50" y="47" text-anchor="middle" font-size="20" class="guide-svg-text" fill="#1f5c39">＝</text>
+          <g fill="#e3f2e8" stroke="#2e7d4f" stroke-width="1.5" stroke-linejoin="round">
+            <polygon points="62,32 76,32 74,56 64,56"/><polygon points="82,32 96,32 94,56 84,56"/>
+            <polygon points="102,32 116,32 114,56 104,56"/><polygon points="122,32 136,32 134,56 124,56"/>
+            <polygon points="142,32 156,32 154,56 144,56"/><polygon points="162,32 176,32 174,56 164,56"/>
+            <polygon points="182,32 196,32 194,56 184,56"/><polygon points="202,32 216,32 214,56 204,56"/>
+            <polygon points="222,32 236,32 234,56 224,56"/><polygon points="242,32 256,32 254,56 244,56"/>
+          </g>
+        </svg>
+        <p class="guide-line">1L ＝ 10dL ＝ 1000mL ・ 牛乳パック 1本</p>
+      </div>
     </div>
     <div class="panel">
       <h2>おもさ</h2>
-      <p class="guide-line">1kg ＝ 1000g</p>
-      <p class="guide-line">1t ＝ 1000kg</p>
+      <div class="guide-row">
+        <svg width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="1円玉">
+          <circle cx="32" cy="32" r="26" fill="#d5dadc" stroke="#8a9499" stroke-width="3"/>
+          <circle cx="32" cy="32" r="20" fill="none" stroke="#8a9499" stroke-width="1.5"/>
+          <text x="32" y="41" text-anchor="middle" font-size="26" class="guide-svg-text" fill="#5f6f66">1</text>
+        </svg>
+        <p class="guide-line">1g ＝ 1円玉 1まい</p>
+      </div>
+      <div class="guide-row">
+        <svg width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="ノートパソコン">
+          <rect x="10" y="10" width="44" height="30" rx="3" fill="#e3f2e8" stroke="#2e7d4f" stroke-width="3"/>
+          <rect x="15" y="15" width="34" height="20" fill="#fff"/>
+          <polygon points="2,44 62,44 57,54 7,54" fill="#2e7d4f"/>
+        </svg>
+        <p class="guide-line">1kg ＝ 1000g ・ ノートパソコン 1だい くらい</p>
+      </div>
+      <div class="guide-row">
+        <svg width="84" height="64" viewBox="0 0 84 64" role="img" aria-label="小さな 車">
+          <rect x="4" y="30" width="76" height="20" rx="6" fill="#2e7d4f"/>
+          <polygon points="18,30 28,14 56,14 66,30" fill="#2e7d4f"/>
+          <polygon points="23,28 30,18 40,18 40,28" fill="#e3f2e8"/>
+          <polygon points="44,28 44,18 54,18 61,28" fill="#e3f2e8"/>
+          <circle cx="22" cy="50" r="9" fill="#1f2d24"/><circle cx="62" cy="50" r="9" fill="#1f2d24"/>
+          <circle cx="22" cy="50" r="3" fill="#d5dadc"/><circle cx="62" cy="50" r="3" fill="#d5dadc"/>
+        </svg>
+        <p class="guide-line">1t ＝ 1000kg ・ 小さい 車 1だい くらい</p>
+      </div>
     </div>
     <button id="btn-guide-ok" class="big-btn primary">わかった</button>
   </section>

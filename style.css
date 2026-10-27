@@ -176,3 +176,8 @@ h2 { font-size: 22px; margin: 0 0 8px; }
 .ruler { position: relative; height: 28px; margin: 8px 0 12px; border-bottom: 2px solid #222; box-sizing: content-box; }
 .ruler-tick { position: absolute; bottom: 0; width: 0; border-left: 1px solid #222; height: 12px; }
 .ruler-tick.long { height: 24px; border-left-width: 2px; }
+/* 見本カードの絵つきの行（絵は文の左・重ならない） */
+.guide-row { display: flex; align-items: center; gap: 16px; margin: 6px 0; }
+.guide-row svg { flex: 0 0 auto; display: block; }
+.guide-row .guide-line { flex: 1; margin: 0; }
+.guide-svg-text { font-family: inherit; font-weight: bold; }

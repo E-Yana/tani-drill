@@ -756,7 +756,18 @@
     }
   }
 
+  var GUIDE_RESHOW_AWAY_MIN = 1; // 裏にいた時間(分)がこれ以上でホームに戻ったら見本カードを出し直す
+  var MS_PER_MIN = 60000;
+
+  /** 裏から戻った時に見本カードを出し直すか。ホームで、裏に GUIDE_RESHOW_AWAY_MIN 分以上いた時だけ真。 */
+  function shouldReshowGuide(awayMs, screen) {
+    if (typeof awayMs !== "number" || !isFinite(awayMs) || awayMs < 0) return false;
+    return screen === "home" && awayMs >= GUIDE_RESHOW_AWAY_MIN * MS_PER_MIN;
+  }
+
   var api = {
+    shouldReshowGuide: shouldReshowGuide,
+    GUIDE_RESHOW_AWAY_MIN: GUIDE_RESHOW_AWAY_MIN,
     parseGuideSettings: parseGuideSettings,
     GUIDE_PX_DEFAULT: GUIDE_PX_DEFAULT,
     GUIDE_PX_MIN: GUIDE_PX_MIN,

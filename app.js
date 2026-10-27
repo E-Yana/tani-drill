@@ -5,7 +5,7 @@
 (function () {
   "use strict";
 
-  const APP_VERSION = "10";
+  const APP_VERSION = "11";
   const L = window.TaniLogic;
   const PROBLEMS = window.TANI_PROBLEMS;
   const STAGE_NAMES = {
@@ -28,7 +28,6 @@
   const MSG_DRIVE_OK = "ドライブに ほぞんしました";
   const MSG_DRIVE_FAILED = "ドライブに ほぞんできませんでした。もう一度 おすと ファイルで ほぞん";
   const GUIDE_KEY = "taniDrill_guide"; // 見本カードの設定 {meterText, pxPerCm}（記録・バックアップには入れない）
-  const GUIDE_SEEN_KEY = "taniDrill_guideSeen"; // 見本カードを最後に見た日 YYYY-MM-DD
   const GUIDE_PX_STEP = 1; // 1cm 調整の刻み(px)
   const RULER_TICKS = 10; // 1cm の中の 1mm 目盛りの数
   const BY_ID = {};
@@ -51,6 +50,8 @@
   let fileFallbackPending = false; // ドライブ送信に失敗済み＝次のタップで共有/ダウンロードを開く
   let driveBusy = false; // ドライブ送信中の二重タップ防止（自動送信中も立てる）
   let autoBackupPromise = null; // 結果画面からの自動送信（送信中だけ値が入る）
+  let currentScreen = "home"; // いま出ている画面名（見本カードの出し直し判定に使う）
+  let hiddenAt = null; // 画面が裏に回った時刻(ms)
   let guide = L.parseGuideSettings(null); // 見本カードの設定（壊れていれば既定値）
 
   const $ = (id) => document.getElementById(id);
@@ -99,6 +100,7 @@
   // ---- 画面切り替え ----
 
   function showScreen(name) {
+    currentScreen = name;
     ["home", "quiz", "result", "guide"].forEach((n) => {
       $("screen-" + n).classList.toggle("hidden", n !== name);
     });
@@ -582,6 +584,8 @@
     const line = $("guide-line-m");
     // 見本が未入力なら「くらい」の行は出さず、1m ＝ 100cm だけにする
     line.textContent = "1m ＝ 100cm" + (guide.meterText ? " ・ " + guide.meterText + " くらい" : "");
+    // 1m の見本がある時だけ、ものさしの横に人の形を出す
+    $("guide-person").classList.toggle("hidden", !guide.meterText);
     showScreen("guide");
   }
 
@@ -599,7 +603,6 @@
   }
 
   function closeGuide() {
-    safeSet(GUIDE_SEEN_KEY, L.localDateString());
     renderHome();
   }
 
@@ -652,6 +655,18 @@
       .catch(() => {});
   }
 
+  /** 裏に1分以上いてホームに戻った時、見本カードを出し直す。 */
+  function bindVisibility() {
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") {
+        hiddenAt = Date.now();
+        return;
+      }
+      if (hiddenAt !== null && L.shouldReshowGuide(Date.now() - hiddenAt, currentScreen)) renderGuide();
+      hiddenAt = null;
+    });
+  }
+
   function init() {
     loadState();
     bindEvents();
@@ -659,8 +674,9 @@
     loadGuide();
     renderGuideSettings();
     renderHome();
-    // 見本カードは毎日最初の1回だけ、ホームの代わりに出す
-    if (safeGet(GUIDE_SEEN_KEY) !== today) renderGuide();
+    // 見本カードは読み込みのたびに、ホームの代わりに出す（保存はしない）
+    renderGuide();
+    bindVisibility();
     registerServiceWorker();
   }
 

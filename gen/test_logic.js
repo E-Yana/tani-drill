@@ -614,6 +614,17 @@ test("guide_settings_broken_returns_default", () => {
   assert.deepStrictEqual(L.parseGuideSettings(JSON.stringify({ pxPerCm: null })), def);
 });
 
+test("guide_reshow_only_home_after_one_minute", () => {
+  assert.strictEqual(L.shouldReshowGuide(59999, "home"), false);
+  assert.strictEqual(L.shouldReshowGuide(60000, "home"), true);
+  assert.strictEqual(L.shouldReshowGuide(600000, "quiz"), false);
+  assert.strictEqual(L.shouldReshowGuide(600000, "result"), false);
+  assert.strictEqual(L.shouldReshowGuide(600000, "guide"), false);
+  [-1, NaN, Infinity, "60000", null, undefined].forEach((v) => {
+    assert.strictEqual(L.shouldReshowGuide(v, "home"), false);
+  });
+});
+
 let failed = 0;
 for (const t of tests) {
   try {
