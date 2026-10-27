@@ -495,6 +495,125 @@ test("summary_mistakes_newest_first_with_answer", () => {
   assert.strictEqual(ms[0].attempt, 1);
 });
 
+/** 出題済みの記録を作る（wrong=true なら間違えたまま）。 */
+function seen(wrong, wrongCount, due) {
+  return { streak: wrong ? 0 : 1, mastered: false, level: 0, due, wrongPending: wrong, lastCorrectDate: null, wrongCount };
+}
+
+/** 1〜total 番のうち、wrongSpec（id番号→回数）を間違い、okFrom〜okTo を期限到来の正解済みにした状態を作る。 */
+function brakeState(wrongSpec, okIds, today) {
+  const st = L.emptyState();
+  Object.keys(wrongSpec).forEach((n) => {
+    st.items["t-" + String(n).padStart(4, "0")] = seen(true, wrongSpec[n], today);
+  });
+  okIds.forEach((n) => {
+    st.items["t-" + String(n).padStart(4, "0")] = seen(false, 0, L.addDays(today, -1));
+  });
+  return st;
+}
+
+test("brake_stops_new_when_five_wrong_pending", () => {
+  const ps = makeProblems(40);
+  const st = brakeState({ 1: 1, 2: 1, 3: 1, 4: 1, 5: 1 }, [6, 7, 8, 9, 10, 11], D1);
+  const ids = L.buildDailySet(ps, st, D1);
+  assert.strictEqual(ids.length, 10);
+  assert.ok(ids.every((id) => st.items[id]), "新しい問題が混ざっている");
+  // 間違い5問 + 期限到来5問
+  assert.strictEqual(ids.filter((id) => st.items[id].wrongPending).length, 5);
+  // 間違いが多い日は最大7枠
+  const st2 = brakeState({ 1: 1, 2: 1, 3: 1, 4: 1, 5: 1, 6: 1, 7: 1, 8: 1, 9: 1, 10: 1 }, [11, 12, 13, 14], D1);
+  const ids2 = L.buildDailySet(ps, st2, D1);
+  assert.strictEqual(ids2.filter((id) => st2.items[id].wrongPending).length, 7);
+  assert.strictEqual(ids2.filter((id) => !st2.items[id].wrongPending).length, 3);
+});
+
+test("no_brake_below_five_keeps_review5_new5", () => {
+  const ps = makeProblems(40);
+  const st = brakeState({ 1: 1, 2: 1, 3: 1, 4: 1 }, [5, 6, 7, 8], D1);
+  const ids = L.buildDailySet(ps, st, D1);
+  assert.strictEqual(ids.length, 10);
+  assert.strictEqual(ids.filter((id) => st.items[id]).length, 5);
+  assert.strictEqual(ids.filter((id) => !st.items[id]).length, 5);
+  assert.deepStrictEqual(ids.slice(0, 4), ["t-0001", "t-0002", "t-0003", "t-0004"]);
+});
+
+test("hard_wrong_max_two", () => {
+  const ps = makeProblems(40);
+  // 固い苦手は 9(5回)・8(4回)・7(3回)・6(3回)。回数の少ない 1〜5 は期限が古い。easy は無し
+  const st = brakeState({ 1: 1, 2: 1, 3: 1, 4: 1, 5: 1, 6: 3, 7: 3, 8: 4, 9: 5 }, [], D1);
+  Object.keys(st.items).forEach((id) => {
+    if (Number(id.slice(2)) <= 5) st.items[id].due = L.addDays(D1, -3);
+  });
+  const ids = L.buildDailySet(ps, st, D1);
+  // 先頭は回数の多い順の最大2問。3番目以降の固い苦手(7,6)は期限順の一般枠で扱われる
+  assert.deepStrictEqual(ids.slice(0, 2), ["t-0009", "t-0008"]);
+  assert.deepStrictEqual(ids.slice(2, 5), ["t-0001", "t-0002", "t-0003"]);
+});
+
+test("braked_order_easy_first_and_last_hard_separated", () => {
+  const ps = makeProblems(40);
+  // 間違い6問(うち固い苦手 1=5回・2=4回) と easy 4問(11〜14)
+  const st = brakeState({ 1: 5, 2: 4, 3: 1, 4: 1, 5: 1, 6: 1 }, [11, 12, 13, 14], D1);
+  const ids = L.buildDailySet(ps, st, D1);
+  assert.strictEqual(ids.length, 10);
+  const isEasy = (id) => st.items[id] && !st.items[id].wrongPending;
+  assert.ok(isEasy(ids[0]), "最初が easy ではない");
+  assert.ok(isEasy(ids[ids.length - 1]), "最後が easy ではない");
+  const i1 = ids.indexOf("t-0001");
+  const i2 = ids.indexOf("t-0002");
+  assert.ok(Math.abs(i1 - i2) >= 2 && isEasy(ids[Math.min(i1, i2) + 1]), "固い苦手の間に easy がない");
+  assert.deepStrictEqual(ids.slice(0, 4), ["t-0011", "t-0001", "t-0012", "t-0002"]);
+  assert.strictEqual(ids[9], "t-0014");
+});
+
+test("overflow_wrong_served_within_n_days", () => {
+  const ps = makeProblems(60);
+  const wrongNums = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+  const spec = {};
+  wrongNums.forEach((n) => (spec[n] = n <= 3 ? 5 : 1)); // 1〜3 は毎回また間違える固い苦手
+  const okNums = [11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
+  const st = brakeState(spec, okNums, D1);
+  const hard = ["t-0001", "t-0002", "t-0003"];
+  const served = new Set();
+  let day = D1;
+  const DAYS = 4;
+  for (let d = 0; d < DAYS; d++) {
+    const wrongBefore = Object.keys(st.items).filter((id) => st.items[id].wrongPending).length;
+    const ids = L.buildDailySet(ps, st, day);
+    ids.forEach((id) => served.add(id));
+    if (wrongBefore >= 5) assert.ok(ids.every((id) => st.items[id]), "ブレーキ中に新しい問題が出た");
+    // 固い苦手は毎回間違える。他は答えない（間違えたままにして期限切れの出番だけ見る）ため
+    // 出した問題は 1回目の結果として固い3問のみ間違い、他は正解にする
+    ids.forEach((id) => {
+      if (hard.indexOf(id) >= 0) answerOnce(st, ps.find((p) => p.id === id), "x", day);
+      else answerOnce(st, ps.find((p) => p.id === id), "1", day);
+    });
+    day = L.addDays(day, 1);
+  }
+  wrongNums.forEach((n) => {
+    assert.ok(served.has("t-" + String(n).padStart(4, "0")), "出番が来ない間違い: " + n);
+  });
+});
+
+test("guide_settings_valid_and_clamped", () => {
+  assert.deepStrictEqual(L.parseGuideSettings(JSON.stringify({ meterText: "  ドアの はば  ", pxPerCm: 64 })), {
+    meterText: "ドアの はば",
+    pxPerCm: 64,
+  });
+  assert.strictEqual(L.parseGuideSettings(JSON.stringify({ meterText: "", pxPerCm: 5 })).pxPerCm, 30);
+  assert.strictEqual(L.parseGuideSettings(JSON.stringify({ meterText: "", pxPerCm: 500 })).pxPerCm, 90);
+  assert.strictEqual(L.parseGuideSettings(JSON.stringify({ meterText: "あ".repeat(30), pxPerCm: 52 })).meterText.length, 20);
+});
+
+test("guide_settings_broken_returns_default", () => {
+  const def = { meterText: "", pxPerCm: 52 };
+  assert.deepStrictEqual(L.parseGuideSettings(null), def);
+  assert.deepStrictEqual(L.parseGuideSettings("{broken"), def);
+  assert.deepStrictEqual(L.parseGuideSettings("[1,2]"), def);
+  assert.deepStrictEqual(L.parseGuideSettings(JSON.stringify({ meterText: 5, pxPerCm: "x" })), def);
+  assert.deepStrictEqual(L.parseGuideSettings(JSON.stringify({ pxPerCm: null })), def);
+});
+
 let failed = 0;
 for (const t of tests) {
   try {

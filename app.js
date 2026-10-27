@@ -5,7 +5,7 @@
 (function () {
   "use strict";
 
-  const APP_VERSION = "9";
+  const APP_VERSION = "10";
   const L = window.TaniLogic;
   const PROBLEMS = window.TANI_PROBLEMS;
   const STAGE_NAMES = {
@@ -27,6 +27,10 @@
   const DRIVE_TIMEOUT_MS = 15000; // 受け口への送信の時間切れ
   const MSG_DRIVE_OK = "ドライブに ほぞんしました";
   const MSG_DRIVE_FAILED = "ドライブに ほぞんできませんでした。もう一度 おすと ファイルで ほぞん";
+  const GUIDE_KEY = "taniDrill_guide"; // 見本カードの設定 {meterText, pxPerCm}（記録・バックアップには入れない）
+  const GUIDE_SEEN_KEY = "taniDrill_guideSeen"; // 見本カードを最後に見た日 YYYY-MM-DD
+  const GUIDE_PX_STEP = 1; // 1cm 調整の刻み(px)
+  const RULER_TICKS = 10; // 1cm の中の 1mm 目盛りの数
   const BY_ID = {};
   PROBLEMS.forEach((p) => {
     BY_ID[p.id] = p;
@@ -47,6 +51,7 @@
   let fileFallbackPending = false; // ドライブ送信に失敗済み＝次のタップで共有/ダウンロードを開く
   let driveBusy = false; // ドライブ送信中の二重タップ防止（自動送信中も立てる）
   let autoBackupPromise = null; // 結果画面からの自動送信（送信中だけ値が入る）
+  let guide = L.parseGuideSettings(null); // 見本カードの設定（壊れていれば既定値）
 
   const $ = (id) => document.getElementById(id);
 
@@ -94,7 +99,7 @@
   // ---- 画面切り替え ----
 
   function showScreen(name) {
-    ["home", "quiz", "result"].forEach((n) => {
+    ["home", "quiz", "result", "guide"].forEach((n) => {
       $("screen-" + n).classList.toggle("hidden", n !== name);
     });
     window.scrollTo(0, 0);
@@ -418,6 +423,10 @@
     $("quiz-retry").classList.toggle("hidden", !retry);
     $("quiz-stage").textContent = STAGE_NAMES[p.stage] || "";
     $("quiz-prompt").textContent = p.prompt;
+    // ヒントは出し直し（2回目以降）の時だけ。1回目には出さないので「できる」の判定は変わらない
+    const hint = $("quiz-hint");
+    hint.textContent = p.hint ? "ヒント：" + p.hint : "";
+    hint.classList.toggle("hidden", !(retry && p.hint));
     $("quiz-feedback").classList.add("hidden");
     const isChoice = p.type === "choice";
     $("quiz-choices").classList.toggle("hidden", !isChoice);
@@ -540,10 +549,69 @@
     });
   }
 
+  // ---- 単位の見本カード ----
+
+  /** 実寸1cm（幅 px）の定規を box に描く。1mm 目盛り10本つき。 */
+  function drawRuler(box, px) {
+    box.innerHTML = "";
+    box.style.width = px + "px";
+    for (let i = 0; i <= RULER_TICKS; i++) {
+      const t = document.createElement("span");
+      t.className = "ruler-tick" + (i === 0 || i === RULER_TICKS ? " long" : "");
+      t.style.left = (px * i) / RULER_TICKS + "px";
+      box.appendChild(t);
+    }
+  }
+
+  function loadGuide() {
+    guide = L.parseGuideSettings(safeGet(GUIDE_KEY));
+  }
+
+  function saveGuide() {
+    safeSet(GUIDE_KEY, JSON.stringify(guide));
+  }
+
+  function renderGuideSettings() {
+    $("guide-meter").value = guide.meterText;
+    $("guide-px-label").textContent = guide.pxPerCm + "px";
+    drawRuler($("guide-preview"), guide.pxPerCm);
+  }
+
+  function renderGuide() {
+    drawRuler($("guide-ruler"), guide.pxPerCm);
+    const line = $("guide-line-m");
+    // 見本が未入力なら「くらい」の行は出さず、1m ＝ 100cm だけにする
+    line.textContent = "1m ＝ 100cm" + (guide.meterText ? " ・ " + guide.meterText + " くらい" : "");
+    showScreen("guide");
+  }
+
+  function saveMeterText() {
+    guide = L.parseGuideSettings(JSON.stringify({ meterText: $("guide-meter").value, pxPerCm: guide.pxPerCm }));
+    saveGuide();
+    renderGuideSettings();
+    setStatus("guide-status", "ほぞんしました");
+  }
+
+  function adjustPx(delta) {
+    guide = L.parseGuideSettings(JSON.stringify({ meterText: guide.meterText, pxPerCm: guide.pxPerCm + delta }));
+    saveGuide();
+    renderGuideSettings();
+  }
+
+  function closeGuide() {
+    safeSet(GUIDE_SEEN_KEY, L.localDateString());
+    renderHome();
+  }
+
   // ---- 起動 ----
 
   function bindEvents() {
     $("btn-start").addEventListener("click", startToday);
+    $("btn-guide-open").addEventListener("click", renderGuide);
+    $("btn-guide-ok").addEventListener("click", closeGuide);
+    $("guide-meter-save").addEventListener("click", saveMeterText);
+    $("guide-px-minus").addEventListener("click", () => adjustPx(-GUIDE_PX_STEP));
+    $("guide-px-plus").addEventListener("click", () => adjustPx(GUIDE_PX_STEP));
     $("btn-backup").addEventListener("click", saveBackup);
     $("drive-save").addEventListener("click", saveDriveSettings);
     $("drive-test").addEventListener("click", testDrive);
@@ -588,7 +656,11 @@
     loadState();
     bindEvents();
     loadDriveForm();
+    loadGuide();
+    renderGuideSettings();
     renderHome();
+    // 見本カードは毎日最初の1回だけ、ホームの代わりに出す
+    if (safeGet(GUIDE_SEEN_KEY) !== today) renderGuide();
     registerServiceWorker();
   }
 

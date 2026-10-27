@@ -12,6 +12,12 @@
   var STATE_VERSION = 1;
   var DAILY_COUNT = 10; // 1日に出す問題数
   var REVIEW_MAX = 5; // 復習枠の上限
+  var BRAKE_WRONG = 5; // 間違えたまま（wrongPending）がこの数以上の日は新しい問題を出さない
+  var BRAKE_WRONG_SLOTS = 7; // ブレーキ日に間違えたものへ割く最大枠（残りは正解できるものを混ぜる）
+  var HARD_WRONG_MIN = 3; // 「固い苦手」とみなす間違い回数
+  var HARD_WRONG_MAX = 2; // 固い苦手を先頭に置く最大数
+  var BRAKE_EASY_BETWEEN_COUNT = 2; // ブレーキ日、固い苦手の前と間に置く easy の数
+  var BRAKE_EASY_LAST_MIN = 3; // easy がこの数以上なら最後の1つを末尾に置く
   var MAX_TRIES = 3; // 同じ問題をその回に出す最大回数（初回を含む）
   var REQUEUE_OFFSET = 2; // 入れ直すときにはさむ問題数
   var INTERVALS = [2, 4, 8, 16]; // 習得後の復習間隔（日）
@@ -164,8 +170,37 @@
     };
   }
 
-  /** 復習候補（wrongPending → 期限が来たもの）を優先順に返す。 */
-  function reviewCandidates(problems, state, today) {
+  /** 固い苦手を回数の多い順（同数は期限→id）に並べる比較関数。 */
+  function byWrongCountDesc(state) {
+    var tie = byDueThenId(state);
+    return function (a, b) {
+      var d = state.items[b].wrongCount - state.items[a].wrongCount;
+      return d !== 0 ? d : tie(a, b);
+    };
+  }
+
+  /**
+   * 間違えたまま（wrongPending）の並び。
+   * 固い苦手（wrongCount>=HARD_WRONG_MIN）を回数の多い順に最大 HARD_WRONG_MAX 問先頭へ、
+   * 続けて残りを期限の古い順→id で並べる。
+   */
+  function orderWrong(wrongIds, state) {
+    var hard = wrongIds
+      .filter(function (id) {
+        return state.items[id].wrongCount >= HARD_WRONG_MIN;
+      })
+      .sort(byWrongCountDesc(state))
+      .slice(0, HARD_WRONG_MAX);
+    var rest = wrongIds
+      .filter(function (id) {
+        return hard.indexOf(id) < 0;
+      })
+      .sort(byDueThenId(state));
+    return hard.concat(rest);
+  }
+
+  /** 復習候補を { wrong: 間違えたもの(並び済み), due: 期限が来たもの } に分けて返す。 */
+  function reviewGroups(problems, state, today) {
     var ids = problems
       .map(function (p) {
         return p.id;
@@ -173,18 +208,25 @@
       .filter(function (id) {
         return state.items[id] && state.items[id].due !== null;
       });
-    var wrong = ids
-      .filter(function (id) {
+    var wrong = orderWrong(
+      ids.filter(function (id) {
         return state.items[id].wrongPending;
-      })
-      .sort(byDueThenId(state));
+      }),
+      state
+    );
     var due = ids
       .filter(function (id) {
         var it = state.items[id];
         return !it.wrongPending && it.due <= today;
       })
       .sort(byDueThenId(state));
-    return wrong.concat(due);
+    return { wrong: wrong, due: due };
+  }
+
+  /** 復習候補（wrongPending → 期限が来たもの）を優先順に返す。 */
+  function reviewCandidates(problems, state, today) {
+    var g = reviewGroups(problems, state, today);
+    return g.wrong.concat(g.due);
   }
 
   /** 未出題が無いときの出題: 全問から due の近い順に DAILY_COUNT 問。 */
@@ -197,11 +239,69 @@
       .slice(0, DAILY_COUNT);
   }
 
+  /** 出題集合を { easy: 正解できるもの, hard: 固い苦手, rest: 残りの間違い, fresh: 新問 } に分ける（各々は元の並びを保つ）。 */
+  function splitBrakeKinds(picked, state) {
+    var wrong = picked.filter(function (id) {
+      return state.items[id] && state.items[id].wrongPending;
+    });
+    var hard = wrong
+      .filter(function (id) {
+        return state.items[id].wrongCount >= HARD_WRONG_MIN;
+      })
+      .slice(0, HARD_WRONG_MAX);
+    return {
+      easy: picked.filter(function (id) {
+        return state.items[id] && !state.items[id].wrongPending;
+      }),
+      hard: hard,
+      rest: wrong.filter(function (id) {
+        return hard.indexOf(id) < 0;
+      }),
+      fresh: picked.filter(function (id) {
+        return !state.items[id];
+      }),
+    };
+  }
+
+  /**
+   * ブレーキ日の並べ替え（選ぶ集合は変えない）:
+   * easy1つ目 → 固い苦手1 → easy2つ目 → 固い苦手2 → 残りの間違い → easyの残り → 最後に easy の最後の1つ。
+   * easy や固い苦手が足りなければ、ある分だけ優先順に置いて無い位置は詰める。
+   */
+  function orderBrakeDay(picked, state) {
+    var k = splitBrakeKinds(picked, state);
+    var last = k.easy.length >= BRAKE_EASY_LAST_MIN ? k.easy.slice(-1) : [];
+    var middle = k.easy.slice(BRAKE_EASY_BETWEEN_COUNT, last.length ? -1 : undefined);
+    var out = [];
+    k.hard.forEach(function (id, i) {
+      if (k.easy[i] !== undefined && i < BRAKE_EASY_BETWEEN_COUNT) out.push(k.easy[i]);
+      out.push(id);
+    });
+    // 固い苦手が0〜1問でも、先頭と間に置くはずだった easy は消さずに先頭側へ詰める
+    for (var i = k.hard.length; i < BRAKE_EASY_BETWEEN_COUNT && i < k.easy.length; i++) out.push(k.easy[i]);
+    return out.concat(k.rest, middle, k.fresh, last);
+  }
+
+  /**
+   * ブレーキ日の出題: 間違い最大 BRAKE_WRONG_SLOTS 問 → 期限が来た正解済みもの →
+   * 足りない時だけ残りの間違い → 最後に新問。新しい問題は最後まで足りない時だけ。
+   * 集合を決めてから orderBrakeDay で並べ替える。
+   */
+  function brakeSet(groups, fresh, state) {
+    var picked = groups.wrong.slice(0, BRAKE_WRONG_SLOTS);
+    picked = picked.concat(groups.due.slice(0, DAILY_COUNT - picked.length));
+    picked = picked.concat(groups.wrong.slice(BRAKE_WRONG_SLOTS, BRAKE_WRONG_SLOTS + DAILY_COUNT - picked.length));
+    picked = picked.concat(fresh.slice(0, DAILY_COUNT - picked.length));
+    return orderBrakeDay(picked, state);
+  }
+
   /** その日の出題 id 配列を作る。 */
   function buildDailySet(problems, state, today) {
     var fresh = unservedProblems(problems, state);
     if (fresh.length === 0) return allServedSet(problems, state);
-    var candidates = reviewCandidates(problems, state, today);
+    var groups = reviewGroups(problems, state, today);
+    if (groups.wrong.length >= BRAKE_WRONG) return brakeSet(groups, fresh, state);
+    var candidates = groups.wrong.concat(groups.due);
     var review = candidates.slice(0, REVIEW_MAX);
     var overflow = candidates.slice(REVIEW_MAX);
     var picked = review.concat(fresh.slice(0, DAILY_COUNT - review.length));
@@ -631,7 +731,37 @@
     }
   }
 
+  // ---- 単位の見本カードの設定 ----
+
+  var GUIDE_PX_DEFAULT = 52; // 画面上の実寸1cmの既定px
+  var GUIDE_PX_MIN = 30;
+  var GUIDE_PX_MAX = 90;
+  var GUIDE_METER_MAX_LEN = 20; // 1m の見本の最大文字数
+
+  /** 見本カードの設定（localStorage の文字列）を検証する。壊れていれば既定値。 */
+  function parseGuideSettings(raw) {
+    var result = { meterText: "", pxPerCm: GUIDE_PX_DEFAULT };
+    try {
+      var v = JSON.parse(raw);
+      if (!isPlainObject(v)) return result;
+      if (typeof v.meterText === "string") {
+        result.meterText = v.meterText.trim().slice(0, GUIDE_METER_MAX_LEN);
+      }
+      if (typeof v.pxPerCm === "number" && isFinite(v.pxPerCm)) {
+        result.pxPerCm = Math.min(GUIDE_PX_MAX, Math.max(GUIDE_PX_MIN, Math.round(v.pxPerCm)));
+      }
+      return result;
+    } catch (e) {
+      return result;
+    }
+  }
+
   var api = {
+    parseGuideSettings: parseGuideSettings,
+    GUIDE_PX_DEFAULT: GUIDE_PX_DEFAULT,
+    GUIDE_PX_MIN: GUIDE_PX_MIN,
+    GUIDE_PX_MAX: GUIDE_PX_MAX,
+    GUIDE_METER_MAX_LEN: GUIDE_METER_MAX_LEN,
     buildDriveRequest: buildDriveRequest,
     parseDriveResponse: parseDriveResponse,
     parseDriveSettings: parseDriveSettings,

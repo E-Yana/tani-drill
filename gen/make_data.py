@@ -10,7 +10,7 @@ import ast
 import json
 import re
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 from pathlib import Path
 
@@ -103,12 +103,79 @@ class Problem:
     suffix: str = ""
     choices: tuple[str, ...] = ()
     calc: tuple[str, ...] = ()
+    hint: str = ""  # 出し直しの時だけ出すヒント（「X＝Y なので…」の前半）
+
+
+HINT_SEPARATOR = " なので"  # explain 内でヒントと計算を分ける目印
+HINT_EQUALS = "＝"
+
+
+HINT_JOINER = " ・ "  # ヒントの部分どうしをつなぐ区切り
+SHIFT_RIGHT = "みぎへ"
+SHIFT_LEFT = "ひだりへ"
+
+# 「なので」の形でない number 問題に付ける関係式ヒント（id -> hint）。答えそのものは書かない
+HINT_OVERRIDES: dict[str, str] = {
+    "t-0005": "1m＝100cm",
+    "t-0008": "1km＝1000m",
+    "t-0010": "1m＝100cm",
+    "t-0011": "1cm＝10mm",
+    "t-0014": "1分＝60秒",
+    "t-0017": "1時間＝60分",
+    "t-0020": "1分＝60秒",
+    "t-0022": "1時間＝60分",
+    "t-0024": "1kg＝1000g",
+    "t-0028": "1kg＝1000g",
+    "t-0029": "1kg＝1000g",
+    "t-0030": "1t＝1000kg",
+    "t-0039": "1L＝10dL",
+    "t-0040": "1L＝1000mL",
+    # 問いが定義そのものの t-0069・t-0073 は、答えを言わずに辺の長さから考えさせる
+    "t-0069": "1a＝10m×10m、1ha＝100m×100m",
+    "t-0070": "1ha＝100a、1a＝100m²",
+    "t-0073": "1km＝1000m、1ha＝100m×100m",
+}
+
+
+def make_hint(explain: str) -> str:
+    """explain が「X＝Y なので…」の形なら前半 X＝Y を返す。違えば空文字。"""
+    if HINT_SEPARATOR not in explain:
+        return ""
+    head = explain.split(HINT_SEPARATOR, 1)[0].strip()
+    return head if HINT_EQUALS in head else ""
+
+
+def decimal_shift_hint(src: str, dst: str, answer: str) -> str:
+    """小数が絡む単純換算（倍率が10のべき乗）の「小数点を…へ Nけた」を返す。付けない時は空文字。
+
+    複合単位（1L5dL など）、小数が出てこない問題、倍率が10のべき乗でない問題（時間など）は空文字。
+    """
+    tokens = TOKEN_PATTERN.findall(src)
+    if len(tokens) != 1 or "".join(n + u for n, u in tokens) != src:
+        return ""
+    if "." not in src and "." not in answer:
+        return ""
+    number, src_unit = tokens[0]
+    ratio = UNIT_TABLE[src_unit][1] / UNIT_TABLE[dst][1]  # 既存の換算表から倍率を出す
+    larger = ratio >= 1  # かける換算（数が大きくなる）か
+    factor = ratio if larger else 1 / ratio
+    digits = factor.log10()
+    if digits != digits.to_integral_value() or digits < 1:
+        return ""
+    count = int(digits)
+    assert Decimal(number) * ratio == Decimal(answer), f"{src}→{dst}: 検算が合わない"
+    assert larger == (Decimal(answer) > Decimal(number)), f"{src}→{dst}: 向きが合わない"
+    direction = SHIFT_RIGHT if larger else SHIFT_LEFT
+    return f"{HINT_JOINER}小数点を {direction} {count}けた"
 
 
 def conv(
     pid: str, stage: int, unit: str, src: str, dst: str, answer: str, explain: str
 ) -> Problem:
     """単位換算の問題（src を dst で表す）。"""
+    hint = make_hint(explain)
+    if hint:
+        hint += decimal_shift_hint(src, dst, answer)
     return Problem(
         id=pid,
         stage=stage,
@@ -119,6 +186,7 @@ def conv(
         explain=explain,
         suffix=dst,
         calc=("conv", src, dst),
+        hint=hint,
     )
 
 
@@ -143,6 +211,7 @@ def calc_q(
         explain=explain,
         suffix=suffix,
         calc=("expr", expr),
+        hint=make_hint(explain),
     )
 
 
@@ -739,8 +808,8 @@ def stage7() -> list[Problem]:
 
 
 def build_problems() -> list[Problem]:
-    """全問題を stage 順・ソース順に返す。"""
-    return [
+    """全問題を stage 順・ソース順に返す（HINT_OVERRIDES を反映）。"""
+    problems = [
         *stage1(),
         *stage2(),
         *stage3(),
@@ -748,6 +817,15 @@ def build_problems() -> list[Problem]:
         *stage5(),
         *stage6(),
         *stage7(),
+    ]
+    by_id = {p.id: p for p in problems}
+    missing = set(HINT_OVERRIDES) - set(by_id)
+    assert not missing, f"HINT_OVERRIDES に存在しない id: {sorted(missing)}"
+    for pid in HINT_OVERRIDES:
+        assert by_id[pid].type == "number" and not by_id[pid].hint, f"{pid}: 上書き不可"
+    return [
+        replace(p, hint=HINT_OVERRIDES[p.id]) if p.id in HINT_OVERRIDES else p
+        for p in problems
     ]
 
 
@@ -860,6 +938,11 @@ def check_each(problems: list[Problem]) -> None:
     for p in problems:
         assert p.type in ("number", "choice"), f"{p.id}: type"
         assert p.prompt and p.explain, f"{p.id}: prompt/explain が空"
+        assert not p.hint or HINT_EQUALS in p.hint, f"{p.id}: hint は＝を含む"
+        assert not (p.type == "choice" and p.hint), f"{p.id}: choice に hint は付けない"
+        assert not p.hint or (p.answer + p.suffix not in p.hint), (
+            f"{p.id}: hint に答えを書かない"
+        )
         if p.type == "choice":
             check_choice(p)
         else:
@@ -899,6 +982,8 @@ def to_js_object(problem: Problem) -> str:
     else:
         parts.append(("choices", list(problem.choices)))
     parts.append(("explain", problem.explain))
+    if problem.hint:
+        parts.append(("hint", problem.hint))
     body = ", ".join(
         f"{key}: {json.dumps(value, ensure_ascii=False)}" for key, value in parts
     )

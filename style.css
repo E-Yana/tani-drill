@@ -166,3 +166,13 @@ h2 { font-size: 22px; margin: 0 0 8px; }
   font-size: 20px;
   font-weight: bold;
 }
+
+.hint { margin: 0 0 12px; padding: 8px 14px; font-size: 22px; font-weight: bold; background: #fff6d6; border-radius: 10px; }
+.guide-line { font-size: 22px; margin: 8px 0; }
+.guide-adjust { align-items: center; margin-bottom: 12px; }
+.guide-adjust-label { margin: 12px 0 4px; }
+.guide-px-label { min-width: 64px; text-align: center; font-size: 18px; }
+/* 実寸1cmの定規。幅は app.js が px で指定する */
+.ruler { position: relative; height: 28px; margin: 8px 0 12px; border-bottom: 2px solid #222; box-sizing: content-box; }
+.ruler-tick { position: absolute; bottom: 0; width: 0; border-left: 1px solid #222; height: 12px; }
+.ruler-tick.long { height: 24px; border-left-width: 2px; }

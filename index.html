@@ -27,6 +27,7 @@
     <div class="panel">
       <button id="btn-start" class="big-btn primary">きょうの 10もん</button>
       <p id="home-today" class="muted small"></p>
+      <button id="btn-guide-open" class="big-btn" type="button">たんいの みほん</button>
     </div>
 
     <div class="panel">
@@ -66,9 +67,50 @@
         </div>
         <p id="drive-status" class="muted small hidden"></p>
       </details>
+      <details class="restore-box">
+        <summary class="muted small">みほんの せってい</summary>
+        <label class="small" for="guide-meter">1m の みほん</label>
+        <input id="guide-meter" class="drive-input" type="text" maxlength="20" placeholder="1m くらいの もの" autocomplete="off" />
+        <div class="drive-buttons">
+          <button id="guide-meter-save" class="small-btn" type="button">ほぞん</button>
+        </div>
+        <p class="small guide-adjust-label">1cm の ながさ ちょうせい</p>
+        <div class="drive-buttons guide-adjust">
+          <button id="guide-px-minus" class="small-btn" type="button">−</button>
+          <span id="guide-px-label" class="guide-px-label"></span>
+          <button id="guide-px-plus" class="small-btn" type="button">＋</button>
+        </div>
+        <div id="guide-preview" class="ruler"></div>
+        <p id="guide-status" class="muted small hidden"></p>
+      </details>
     </div>
 
     <p id="app-version" class="muted small version-label"></p>
+  </section>
+
+  <!-- ============ 単位の見本カード ============ -->
+  <section id="screen-guide" class="screen hidden">
+    <header class="app-header">
+      <h1>たんいの みほん</h1>
+    </header>
+    <div class="panel">
+      <h2>ながさ</h2>
+      <p class="guide-line">この せんが 1cm</p>
+      <div id="guide-ruler" class="ruler"></div>
+      <p class="guide-line">1cm ＝ 10mm</p>
+      <p id="guide-line-m" class="guide-line"></p>
+      <p class="guide-line">1km ＝ 1000m ・ いえから 学校まで くらい</p>
+    </div>
+    <div class="panel">
+      <h2>かさ</h2>
+      <p class="guide-line">1L ＝ 10dL ＝ 1000mL</p>
+    </div>
+    <div class="panel">
+      <h2>おもさ</h2>
+      <p class="guide-line">1kg ＝ 1000g</p>
+      <p class="guide-line">1t ＝ 1000kg</p>
+    </div>
+    <button id="btn-guide-ok" class="big-btn primary">わかった</button>
   </section>
 
   <!-- ============ 出題画面 ============ -->
@@ -80,6 +122,7 @@
     </div>
     <p id="quiz-stage" class="stage-label"></p>
     <p id="quiz-prompt" class="prompt"></p>
+    <p id="quiz-hint" class="hint hidden"></p>
 
     <div id="quiz-choices" class="choices hidden"></div>
 
