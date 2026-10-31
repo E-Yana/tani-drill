@@ -5,7 +5,7 @@
 (function () {
   "use strict";
 
-  const APP_VERSION = "11";
+  const APP_VERSION = "12";
   const L = window.TaniLogic;
   const PROBLEMS = window.TANI_PROBLEMS;
   const STAGE_NAMES = {
@@ -18,6 +18,7 @@
     7: "4年：まとめの文章題",
   };
   const DAILY_DONE_COUNT = 10; // 今日この数以上を出していたら「もう 10もん」
+  const WEEK_DOT_DAYS = 6; // ホームの●○は6日前〜今日の7日分
   const MAX_INPUT_LEN = 8; // 入力できる最大の文字数
   const BACKUP_REMIND_DAYS = 7; // 最終保存からこの日数たったら促す
   const MSG_ARCHIVE_FAILED = "いまの きろくを のこせなかったので、やめました。いまの きろくは そのままです";
@@ -142,6 +143,20 @@
     });
   }
 
+  /** れんぞく日数と直近7日（6日前〜今日）の●○を描く。 */
+  function renderStreak() {
+    $("home-streak").textContent = L.streakDays(state, today);
+    $("home-week").innerHTML = L.weekMarks(state, today, WEEK_DOT_DAYS)
+      .map(function (d) {
+        return (
+          '<span class="week-day' + (d.isToday ? " today" : "") + '">' +
+          '<span class="week-wd">' + d.weekday + "</span>" +
+          '<span class="week-mark' + (d.studied ? " studied" : "") + '">' + (d.studied ? "●" : "○") + "</span></span>"
+        );
+      })
+      .join("");
+  }
+
   function renderHome() {
     today = L.localDateString();
     const done = PROBLEMS.filter((p) => isMastered(p.id)).length;
@@ -154,6 +169,7 @@
       ? "きょうは " + day.served.length + "もん やったよ。えらい！"
       : "";
     $("app-version").textContent = "v" + APP_VERSION;
+    renderStreak();
     renderBackupRemind();
     renderStages();
     renderMistakeNote();

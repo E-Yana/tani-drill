@@ -22,6 +22,7 @@
   var REQUEUE_OFFSET = 2; // 入れ直すときにはさむ問題数
   var INTERVALS = [2, 4, 8, 16]; // 習得後の復習間隔（日）
   var MAX_LEVEL = INTERVALS.length - 1;
+  var WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"]; // getUTCDay() の順
   var RECORD_DAYS = 14; // バックアップ要約（直近の日別記録）の対象日数
   var NOTICE_CORRUPT = "corrupt";
   var BACKUP_APP_ID = "tani-drill";
@@ -441,6 +442,52 @@
     return { id: id, correct: correct, first: first, requeued: requeued };
   }
 
+  // ---- れんぞく（やった日＝1問でも出した日） ----
+
+  /** やった日（served が配列で1件以上ある日）の日付を集合で返す。 */
+  function studyDaySet(state) {
+    var set = {};
+    Object.keys(state.days).forEach(function (d) {
+      var day = state.days[d];
+      if (day && Array.isArray(day.served) && day.served.length >= 1) set[d] = true;
+    });
+    return set;
+  }
+
+  /** やった日の日付を古い順に返す。 */
+  function studyDayList(state) {
+    return Object.keys(studyDaySet(state)).sort();
+  }
+
+  /** 今日か昨日で終わる連続日数を返す（今日やっていなければ昨日から数える。途切れていれば0）。 */
+  function streakDays(state, today) {
+    var set = studyDaySet(state);
+    var cur = set[today] ? today : addDays(today, -1);
+    var count = 0;
+    while (set[cur]) {
+      count++;
+      cur = addDays(cur, -1);
+    }
+    return count;
+  }
+
+  /** n日前〜今日を古い順に返す（ホームの●○用）。要約用の recentDays とは別。 */
+  function weekMarks(state, today, n) {
+    var set = studyDaySet(state);
+    var marks = [];
+    for (var i = n; i >= 0; i--) {
+      var d = addDays(today, -i);
+      var p = d.split("-").map(Number);
+      marks.push({
+        date: d,
+        weekday: WEEKDAY_LABELS[new Date(Date.UTC(p[0], p[1] - 1, p[2])).getUTCDay()],
+        studied: set[d] === true,
+        isToday: d === today,
+      });
+    }
+    return marks;
+  }
+
   // ---- バックアップ兼きろく ----
 
   /** 今日までの日別記録を新しい順に返す（バックアップ要約用）。 */
@@ -564,6 +611,7 @@
         totalCount: problems.length,
         stages: stageSummary(state, problems),
         weak: weakProblems(state, problems),
+        streak: streakDays(state, today),
         recentDays: recentDays(state, today),
         mistakes: recentMistakes(state, problems, today),
       },
@@ -798,6 +846,9 @@
     submitAnswer: submitAnswer,
     recordFirstResult: recordFirstResult,
     recentMistakes: recentMistakes,
+    studyDayList: studyDayList,
+    streakDays: streakDays,
+    weekMarks: weekMarks,
     RECORD_DAYS: RECORD_DAYS,
   };
 

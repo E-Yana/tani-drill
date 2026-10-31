@@ -625,6 +625,52 @@ test("guide_reshow_only_home_after_one_minute", () => {
   });
 });
 
+/** served だけを持つ日別記録の state を作る。 */
+function stateWithDays(map) {
+  const st = L.emptyState();
+  Object.keys(map).forEach((d) => {
+    st.days[d] = { served: map[d], firstCorrect: [], firstWrong: [] };
+  });
+  return st;
+}
+
+test("streak_zero_after_rest_two_days", () => {
+  const st = stateWithDays({ "2026-10-28": ["a"], "2026-10-29": ["a"] });
+  assert.strictEqual(L.streakDays(st, "2026-11-01"), 0);
+  assert.strictEqual(L.streakDays(L.emptyState(), "2026-11-01"), 0);
+});
+
+test("streak_continues_with_today_or_yesterday", () => {
+  const st = stateWithDays({ "2026-10-30": ["a"], "2026-10-31": ["a"] });
+  assert.strictEqual(L.streakDays(st, "2026-11-01"), 2); // 今日まだ → 昨日から数える
+  st.days["2026-11-01"] = { served: ["a"], firstCorrect: [], firstWrong: [] };
+  assert.strictEqual(L.streakDays(st, "2026-11-01"), 3);
+});
+
+test("streak_ignores_empty_served_day", () => {
+  const st = stateWithDays({ "2026-10-30": ["a"], "2026-10-31": [], "2026-11-01": ["a"] });
+  assert.strictEqual(L.streakDays(st, "2026-11-01"), 1);
+  assert.deepStrictEqual(L.studyDayList(st), ["2026-10-30", "2026-11-01"]);
+});
+
+test("week_marks_order_weekday_today_and_month_boundary", () => {
+  const st = stateWithDays({ "2026-10-30": ["a"], "2026-11-01": ["a"] });
+  const m = L.weekMarks(st, "2026-11-01", 6);
+  assert.strictEqual(m.length, 7);
+  assert.deepStrictEqual(
+    m.map((d) => d.date),
+    ["2026-10-26", "2026-10-27", "2026-10-28", "2026-10-29", "2026-10-30", "2026-10-31", "2026-11-01"]
+  );
+  assert.deepStrictEqual(m.map((d) => d.weekday), ["月", "火", "水", "木", "金", "土", "日"]);
+  assert.deepStrictEqual(m.map((d) => d.studied), [false, false, false, false, true, false, true]);
+  assert.deepStrictEqual(m.map((d) => d.isToday), [false, false, false, false, false, false, true]);
+});
+
+test("backup_summary_has_streak", () => {
+  const st = stateWithDays({ "2026-10-31": ["a"], "2026-11-01": ["a"] });
+  assert.strictEqual(L.buildBackup(st, [], "2026-11-01", "12").summary.streak, 2);
+});
+
 let failed = 0;
 for (const t of tests) {
   try {
