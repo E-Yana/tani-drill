@@ -5,7 +5,7 @@
 (function () {
   "use strict";
 
-  const APP_VERSION = "12";
+  const APP_VERSION = "13";
   const L = window.TaniLogic;
   const PROBLEMS = window.TANI_PROBLEMS;
   const STAGE_NAMES = {
@@ -115,30 +115,22 @@
     return !!it && it.mastered === true;
   }
 
-  function stageCounts() {
-    const stats = {};
-    PROBLEMS.forEach((p) => {
-      const s = stats[p.stage] || (stats[p.stage] = { total: 0, done: 0 });
-      s.total += 1;
-      if (isMastered(p.id)) s.done += 1;
-    });
-    return stats;
-  }
-
+  /** 段階ごとの3色の棒を描く。「まだ」が残る最も小さい段階の行頭に▶を付ける。 */
   function renderStages() {
-    const stats = stageCounts();
+    const prog = L.stageProgress(PROBLEMS, state);
     const box = $("home-stages");
     box.innerHTML = "";
-    Object.keys(stats).forEach((stage) => {
-      const s = stats[stage];
+    prog.stages.forEach((s) => {
       const row = document.createElement("div");
       row.className = "stage-row";
-      const pct = s.total ? Math.round((s.done / s.total) * 100) : 0;
+      const pctOf = (n) => (s.total ? (n / s.total) * 100 : 0);
       row.innerHTML =
-        '<span class="stage-name"></span><span class="stage-bar"><span class="stage-bar-fill"></span></span><span class="stage-count"></span>';
-      row.querySelector(".stage-name").textContent = STAGE_NAMES[stage] || "だんかい " + stage;
-      row.querySelector(".stage-bar-fill").style.width = pct + "%";
-      row.querySelector(".stage-count").textContent = s.done + "/" + s.total;
+        '<span class="stage-name"></span><span class="stage-bar"><span class="stage-seg mastered"></span><span class="stage-seg practicing"></span></span><span class="stage-count"></span>';
+      const mark = s.stage === prog.currentStage ? "▶ " : "";
+      row.querySelector(".stage-name").textContent = mark + (STAGE_NAMES[s.stage] || "だんかい " + s.stage);
+      row.querySelector(".stage-seg.mastered").style.width = pctOf(s.mastered) + "%";
+      row.querySelector(".stage-seg.practicing").style.width = pctOf(s.practicing) + "%";
+      row.querySelector(".stage-count").textContent = s.mastered + "/" + s.total;
       box.appendChild(row);
     });
   }

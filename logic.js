@@ -567,6 +567,41 @@
       });
   }
 
+  /**
+   * 段階ごとに「できる／れんしゅうちゅう／まだ」の3色の数を集計する（ホームのすすみぐあい用）。
+   * mastered＝item.mastered===true（mastered を優先）、unseen＝記録なし or due===null
+   * （unservedProblems と同じ判定）、practicing＝それ以外。
+   * currentStage は「まだ」が残っている最も小さい段階（無ければ null）。
+   */
+  function stageProgress(problems, state) {
+    var stages = {};
+    problems.forEach(function (p) {
+      var s =
+        stages[p.stage] ||
+        (stages[p.stage] = { stage: p.stage, total: 0, mastered: 0, practicing: 0, unseen: 0 });
+      s.total += 1;
+      var it = state.items[p.id];
+      if (it && it.mastered === true) s.mastered += 1;
+      else if (!it || it.due === null) s.unseen += 1;
+      else s.practicing += 1;
+    });
+    var list = Object.keys(stages)
+      .map(function (k) {
+        return stages[k];
+      })
+      .sort(function (a, b) {
+        return a.stage - b.stage;
+      });
+    var current = null;
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].unseen > 0) {
+        current = list[i].stage;
+        break;
+      }
+    }
+    return { stages: list, currentStage: current };
+  }
+
   /** 間違いの多い順に苦手問題を返す（間違い0で復習待ちでないものは除く）。 */
   function weakProblems(state, problems) {
     return problems
@@ -846,6 +881,7 @@
     submitAnswer: submitAnswer,
     recordFirstResult: recordFirstResult,
     recentMistakes: recentMistakes,
+    stageProgress: stageProgress,
     studyDayList: studyDayList,
     streakDays: streakDays,
     weekMarks: weekMarks,

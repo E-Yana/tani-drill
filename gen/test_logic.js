@@ -671,6 +671,38 @@ test("backup_summary_has_streak", () => {
   assert.strictEqual(L.buildBackup(st, [], "2026-11-01", "12").summary.streak, 2);
 });
 
+test("stage_progress_three_colors", () => {
+  const ps = [prob("a", 1), prob("b", 1), prob("c", 1), prob("d", 1), prob("e", 1)];
+  const st = L.emptyState();
+  st.items.a = { mastered: true, due: "2026-11-10" };
+  st.items.b = { mastered: false, due: "2026-11-02" };
+  st.items.c = { mastered: false, due: null };
+  st.items.d = { mastered: true, due: null }; // mastered を優先して数える
+  // e は記録なし
+  const r = L.stageProgress(ps, st);
+  assert.deepStrictEqual(r.stages, [{ stage: 1, total: 5, mastered: 2, practicing: 1, unseen: 2 }]);
+});
+
+test("stage_progress_sum_equals_total", () => {
+  const ps = makeProblems(8);
+  const st = L.emptyState();
+  st.items[ps[0].id] = { mastered: true, due: "2026-11-10" };
+  st.items[ps[3].id] = { mastered: false, due: "2026-11-02" };
+  L.stageProgress(ps, st).stages.forEach((s) => {
+    assert.strictEqual(s.mastered + s.practicing + s.unseen, s.total);
+  });
+});
+
+test("stage_progress_current_stage", () => {
+  const ps = makeProblems(6); // stage 1,1,2,2,3,3
+  const st = L.emptyState();
+  assert.strictEqual(L.stageProgress(ps, st).currentStage, 1);
+  ps.slice(0, 2).forEach((p) => (st.items[p.id] = { mastered: false, due: "2026-11-02" }));
+  assert.strictEqual(L.stageProgress(ps, st).currentStage, 2);
+  ps.forEach((p) => (st.items[p.id] = { mastered: false, due: "2026-11-02" }));
+  assert.strictEqual(L.stageProgress(ps, st).currentStage, null);
+});
+
 let failed = 0;
 for (const t of tests) {
   try {
