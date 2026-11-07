@@ -5,7 +5,7 @@
 (function () {
   "use strict";
 
-  const APP_VERSION = "13";
+  const APP_VERSION = "14";
   const L = window.TaniLogic;
   const PROBLEMS = window.TANI_PROBLEMS;
   const STAGE_NAMES = {
@@ -470,8 +470,35 @@
     });
   }
 
+  // ---- 効果音（sound.js） ----
+  // 効果音を鳴らす。sound.js が読めない時も学習は止めない
+  function playSound(kind) {
+    try {
+      if (window.DrillSound) window.DrillSound[kind]();
+    } catch (e) {
+      /* 音が鳴らないだけ */
+    }
+  }
+
+  // ホームの「おと」ボタンの表示を現在の状態に合わせる
+  function renderSoundToggle() {
+    const btn = $("btn-sound");
+    if (!btn || !window.DrillSound) return;
+    btn.textContent = window.DrillSound.isOn() ? "🔊 おと: オン" : "🔇 おと: オフ";
+  }
+
+  // 「おと」ボタン: オン/オフを切り替える（オンにした時は確認音を1回鳴らす）
+  function toggleSound() {
+    if (!window.DrillSound) return;
+    const next = !window.DrillSound.isOn();
+    window.DrillSound.setOn(next);
+    renderSoundToggle();
+    if (next) playSound("correct");
+  }
+
   function showFeedback(result) {
     const p = currentProblem;
+    playSound(result.correct ? "correct" : "wrong");
     const msg = $("feedback-msg");
     msg.textContent = result.correct ? "せいかい！" : "ざんねん";
     msg.className = "feedback-msg " + (result.correct ? "ok" : "ng");
@@ -619,6 +646,8 @@
   function bindEvents() {
     $("btn-start").addEventListener("click", startToday);
     $("btn-guide-open").addEventListener("click", renderGuide);
+    $("btn-sound").addEventListener("click", toggleSound);
+    renderSoundToggle();
     $("btn-guide-ok").addEventListener("click", closeGuide);
     $("guide-meter-save").addEventListener("click", saveMeterText);
     $("guide-px-minus").addEventListener("click", () => adjustPx(-GUIDE_PX_STEP));
